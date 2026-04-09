@@ -1,0 +1,123 @@
+# Migration Rule Schema for jwx
+#
+# This file documents the structure of v3-to-v4.yaml so that AI agents
+# and tooling can parse migration rules programmatically.
+#
+# Each rule in the rules list follows this schema.
+
+schema_version: "2"
+
+rule_fields:
+  id:
+    required: true
+    type: string
+    description: >
+      Stable identifier for this rule (e.g., "import-v3-to-v4", "get-to-field").
+      Used by the migration checker to reference rules in diagnostics.
+      Must be unique across all rules.
+
+  kind:
+    required: true
+    type: string
+    description: The type of API change.
+    values:
+      import_change: Module or package import path changed.
+      signature_change: Same function name, different parameters or return types.
+      rename: Function, type, or interface was renamed.
+      removed: API was deleted. Check `replacement` for the v4 equivalent.
+      behavioral: Same API surface, different runtime behavior or requirements.
+      type_change: Type or interface definition changed.
+      moved_to_extension: Feature moved from core to an extension module under github.com/jwx-go/.
+      build_change: Build tag, Go version, or build environment change.
+
+  package:
+    required: true
+    type: string
+    description: >
+      The Go package where this change applies (e.g., "jwk", "jws", "jwt", "jwe", "jwa", "jwx").
+      Use "all" for changes that apply to every package.
+
+  v3:
+    required: false
+    type: string
+    description: The v3 function, type, or symbol name.
+
+  v4:
+    required: false
+    type: string
+    description: The v4 function, type, or symbol name.
+
+  v3_signature:
+    required: false
+    type: string
+    description: Full v3 function signature for signature_change rules.
+
+  v4_signature:
+    required: false
+    type: string
+    description: Full v4 function signature for signature_change rules.
+
+  replacement:
+    required: false
+    type: string
+    description: For removed rules, the v4 replacement (may be in a different package or extension module).
+
+  extension_module:
+    required: false
+    type: string
+    description: For moved_to_extension rules, the full Go module path of the extension.
+
+  mechanical:
+    required: true
+    type: boolean
+    description: >
+      true = an agent can apply this rule via search-and-replace or simple AST
+      transform with no human judgment needed. false = requires understanding
+      context (e.g., inferring type parameters, restructuring code).
+
+  search_patterns:
+    required: false
+    type: list
+    items:
+      type: string
+    description: >
+      Regex patterns to find affected v3 code in consumer Go files.
+      Each pattern should match a line that needs migration.
+      Patterns are applied only to files that import jwx/v3 (to avoid false positives).
+
+  compiler_hints:
+    required: false
+    type: list
+    items:
+      type: string
+    description: >
+      Go compiler error substrings that indicate this rule applies.
+      Agents can match `go build` stderr against these to find the right rule.
+
+  file_patterns:
+    required: false
+    type: list
+    items:
+      type: string
+    description: >
+      Glob patterns for non-Go files to scan (e.g., "Makefile", "*.yml",
+      "Dockerfile"). Used for build_change rules that affect CI/build configs.
+
+  note:
+    required: true
+    type: string
+    description: >
+      Migration guidance. Explain what changed, why, and what the user needs to do.
+      Keep it actionable — agents will use this text to decide how to transform code.
+
+  example:
+    required: false
+    type: object
+    description: Concrete before/after code showing the migration.
+    fields:
+      before:
+        type: string
+        description: v3 code snippet.
+      after:
+        type: string
+        description: Equivalent v4 code snippet.

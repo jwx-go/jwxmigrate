@@ -1,0 +1,964 @@
+# jwx v3 → v4 Migration Rules
+#
+# Machine-readable migration map for AI coding agents.
+# Schema: see schema.yaml in this directory.
+#
+# Source: github.com/lestrrat-go/jwx/v3 → github.com/lestrrat-go/jwx/v4
+
+schema_version: "2"
+from: "github.com/lestrrat-go/jwx/v3"
+to: "github.com/lestrrat-go/jwx/v4"
+
+rules:
+
+  # ============================================================
+  # Module & Build Changes
+  # ============================================================
+
+  - id: import-v3-to-v4
+    kind: import_change
+    package: all
+    mechanical: true
+    v3: "github.com/lestrrat-go/jwx/v3"
+    v4: "github.com/lestrrat-go/jwx/v4"
+    search_patterns:
+      - 'lestrrat-go/jwx/v3'
+    compiler_hints:
+      - 'no required module provides package github.com/lestrrat-go/jwx/v3'
+    note: >
+      Update all import paths from v3 to v4.
+      This applies to every subpackage: jwk, jws, jwe, jwt, jwt/openid, jwa, transform.
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jwt"
+      after: |
+        import "github.com/lestrrat-go/jwx/v4/jwt"
+
+  - id: build-go-version
+    kind: build_change
+    package: all
+    mechanical: true
+    search_patterns:
+      - 'go 1\.\d+\.\d+'
+    file_patterns:
+      - "go.mod"
+    note: >
+      Go version requirement changed from 1.25.0 to 1.26.0.
+      Build requires GOEXPERIMENT=jsonv2 environment variable.
+      Update go.mod and build scripts accordingly.
+
+  - id: build-tag-goccy
+    kind: build_change
+    package: all
+    mechanical: true
+    v3: "-tags=jwx_goccy"
+    search_patterns:
+      - 'jwx_goccy'
+    file_patterns:
+      - "Makefile"
+      - "*.sh"
+      - "*.yml"
+      - "*.yaml"
+      - "Dockerfile"
+    compiler_hints:
+      - 'build constraints exclude all Go files'
+    note: >
+      The jwx_goccy build tag is removed. v4 uses encoding/json/v2 (via GOEXPERIMENT=jsonv2)
+      exclusively. Remove -tags=jwx_goccy from all build and test commands.
+
+  - id: build-tag-asmbase64
+    kind: build_change
+    package: all
+    mechanical: true
+    v3: "-tags=jwx_asmbase64"
+    search_patterns:
+      - 'jwx_asmbase64'
+    file_patterns:
+      - "Makefile"
+      - "*.sh"
+      - "*.yml"
+      - "*.yaml"
+      - "Dockerfile"
+    note: >
+      The jwx_asmbase64 build tag is removed. For assembly-optimized base64, use the
+      extension module github.com/jwx-go/asmbase64/v4 instead.
+
+  - id: build-tag-es256k
+    kind: build_change
+    package: all
+    mechanical: true
+    v3: "-tags=jwx_es256k"
+    search_patterns:
+      - 'jwx_es256k'
+    file_patterns:
+      - "Makefile"
+      - "*.sh"
+      - "*.yml"
+      - "*.yaml"
+      - "Dockerfile"
+    note: >
+      The jwx_es256k build tag is removed. For ES256K/secp256k1 support, use the
+      extension module github.com/jwx-go/es256k/v4 instead.
+
+  - id: build-tag-secp256k1-pem
+    kind: build_change
+    package: all
+    mechanical: true
+    v3: "-tags=jwx_secp256k1_pem"
+    search_patterns:
+      - 'jwx_secp256k1_pem'
+    file_patterns:
+      - "Makefile"
+      - "*.sh"
+      - "*.yml"
+      - "*.yaml"
+      - "Dockerfile"
+    note: >
+      The jwx_secp256k1_pem build tag is removed. PEM support for secp256k1 keys
+      is included in github.com/jwx-go/es256k/v4.
+
+  # ============================================================
+  # Root Package (jwx)
+  # ============================================================
+
+  - id: remove-decodersettings
+    kind: removed
+    package: jwx
+    mechanical: true
+    v3: DecoderSettings
+    search_patterns:
+      - 'DecoderSettings\('
+    compiler_hints:
+      - 'undefined: jwx.DecoderSettings'
+      - 'undefined: DecoderSettings'
+    note: >
+      jwx.DecoderSettings() is removed entirely. v4 uses encoding/json/v2 which does
+      not need manual decoder configuration. Remove all calls to DecoderSettings().
+
+  - id: remove-withusenumber
+    kind: removed
+    package: jwx
+    mechanical: true
+    v3: WithUseNumber
+    search_patterns:
+      - 'WithUseNumber\('
+    compiler_hints:
+      - 'undefined: jwx.WithUseNumber'
+      - 'undefined: WithUseNumber'
+    note: >
+      jwx.WithUseNumber() is removed. JSON numbers are handled natively by encoding/json/v2.
+      If you relied on json.Number type, use float64 or implement custom unmarshaling.
+    example:
+      before: |
+        jwx.DecoderSettings(jwx.WithUseNumber(true))
+      after: |
+        // Remove entirely. json/v2 handles numbers natively.
+
+  # ============================================================
+  # All Packages — Interface Method Changes
+  # ============================================================
+
+  - id: get-to-field
+    kind: signature_change
+    package: all
+    mechanical: false
+    v3: Get
+    v4: Field
+    v3_signature: "Get(name string, dst any) error"
+    v4_signature: "Field(name string) (any, bool)"
+    search_patterns:
+      - '\.Get\('
+    compiler_hints:
+      - 'too many arguments in call to'
+      - '.Get undefined'
+    note: >
+      The Get(name, &dst) method on Key, Token, JWS Headers, and JWE Headers is replaced
+      by Field(name) which returns (value, ok). For type-safe access, use the new generic
+      free function Get[T] in the respective package.
+    example:
+      before: |
+        var kid string
+        if err := key.Get("kid", &kid); err != nil {
+            return err
+        }
+      after: |
+        // Option 1: Use generic Get[T] (preferred for type safety)
+        kid, err := jwk.Get[string](key, "kid")
+
+        // Option 2: Use Field() directly
+        v, ok := key.Field("kid")
+        if !ok {
+            return errors.New("kid not found")
+        }
+        kid, ok := v.(string)
+
+  - id: register-custom-field-generic
+    kind: signature_change
+    package: all
+    mechanical: true
+    v3: RegisterCustomField
+    v4: RegisterCustomField
+    v3_signature: "RegisterCustomField(name string, object any)"
+    v4_signature: "RegisterCustomField[T any](name string)"
+    search_patterns:
+      - 'RegisterCustomField\('
+    compiler_hints:
+      - 'too many arguments in call to'
+    note: >
+      RegisterCustomField now uses a type parameter instead of a sample object.
+      This applies to jwk, jws, jwe, and jwt packages.
+    example:
+      before: |
+        jwt.RegisterCustomField("my-field", time.Time{})
+      after: |
+        jwt.RegisterCustomField[time.Time]("my-field")
+
+  # ============================================================
+  # All Packages — File I/O
+  # ============================================================
+
+  - id: readfile-to-parsefs
+    kind: signature_change
+    package: all
+    mechanical: true
+    v3: ReadFile
+    v4: ParseFS
+    v3_signature: "ReadFile(path string, options ...ReadFileOption) (T, error)"
+    v4_signature: "ParseFS(fsys fs.FS, path string, options ...ParseOption) (T, error)"
+    search_patterns:
+      - 'ReadFile\('
+    compiler_hints:
+      - 'undefined: jwt.ReadFile'
+      - 'undefined: jwk.ReadFile'
+      - 'undefined: jws.ReadFile'
+      - 'undefined: jwe.ReadFile'
+    note: >
+      ReadFile() is replaced by ParseFS() which takes an fs.FS argument.
+      Use os.DirFS() to get a filesystem rooted at a directory.
+      The ReadFileOption interface is removed; use ParseOption instead.
+      This applies to jwk, jws, jwe, and jwt packages.
+    example:
+      before: |
+        token, err := jwt.ReadFile("/path/to/token.jwt")
+        // or with a custom filesystem:
+        token, err := jwt.ReadFile("token.jwt", jwt.WithFS(myFS))
+      after: |
+        token, err := jwt.ParseFS(os.DirFS("/path/to"), "token.jwt")
+        // or with a custom filesystem:
+        token, err := jwt.ParseFS(myFS, "token.jwt")
+
+  - id: remove-readfileoption
+    kind: removed
+    package: all
+    mechanical: true
+    v3: ReadFileOption
+    replacement: ParseOption
+    search_patterns:
+      - 'ReadFileOption'
+    compiler_hints:
+      - 'undefined: jwt.ReadFileOption'
+      - 'undefined: jwk.ReadFileOption'
+    note: >
+      The ReadFileOption interface is removed. Functions that accepted ReadFileOption
+      now accept ParseOption. This applies to jwk, jws, jwe, and jwt packages.
+
+  - id: remove-withfs
+    kind: removed
+    package: all
+    mechanical: true
+    v3: WithFS
+    search_patterns:
+      - 'WithFS\('
+    compiler_hints:
+      - 'undefined: jwt.WithFS'
+      - 'undefined: jwk.WithFS'
+    note: >
+      The WithFS() option is removed. Pass the fs.FS directly to ParseFS() as the
+      first argument instead.
+
+  # ============================================================
+  # jwk Package
+  # ============================================================
+
+  - id: jwk-import-generic
+    kind: signature_change
+    package: jwk
+    mechanical: false
+    v3: Import
+    v4: Import
+    v3_signature: "Import(raw any) (Key, error)"
+    v4_signature: "Import[T Key](raw any) (T, error)"
+    search_patterns:
+      - 'jwk\.Import\('
+    compiler_hints:
+      - 'cannot use .* as jwk.Key'
+      - 'not enough type arguments for jwk.Import'
+    note: >
+      jwk.Import() now takes a type parameter specifying the expected key type.
+      If you previously type-asserted the result, use that type as T.
+      Use jwk.Key as T if you don't know the concrete type.
+    example:
+      before: |
+        key, err := jwk.Import(rsaPrivKey)
+        rsaKey, ok := key.(jwk.RSAPrivateKey)
+        if !ok {
+            return errors.New("unexpected key type")
+        }
+      after: |
+        rsaKey, err := jwk.Import[jwk.RSAPrivateKey](rsaPrivKey)
+        if err != nil {
+            return err // includes type mismatch errors
+        }
+
+  - id: jwk-parsekey-generic
+    kind: signature_change
+    package: jwk
+    mechanical: false
+    v3: ParseKey
+    v4: ParseKey
+    v3_signature: "ParseKey(data []byte, options ...ParseOption) (Key, error)"
+    v4_signature: "ParseKey[T Key](data []byte, options ...ParseOption) (T, error)"
+    search_patterns:
+      - 'jwk\.ParseKey\('
+    compiler_hints:
+      - 'not enough type arguments for jwk.ParseKey'
+    note: >
+      jwk.ParseKey() now takes a type parameter. Use the concrete key type if known,
+      or jwk.Key if not.
+    example:
+      before: |
+        key, err := jwk.ParseKey(data)
+        ecKey, ok := key.(jwk.ECDSAPublicKey)
+      after: |
+        ecKey, err := jwk.ParseKey[jwk.ECDSAPublicKey](data)
+
+  - id: jwk-register-key-importer
+    kind: signature_change
+    package: jwk
+    mechanical: false
+    v3: RegisterKeyImporter
+    v4: RegisterKeyImporter
+    v3_signature: "RegisterKeyImporter(from any, conv KeyImporter)"
+    v4_signature: "RegisterKeyImporter[T any](fn func(T) (Key, error))"
+    search_patterns:
+      - 'RegisterKeyImporter\('
+    compiler_hints:
+      - 'too many arguments in call to jwk.RegisterKeyImporter'
+    note: >
+      RegisterKeyImporter now uses a generic type parameter instead of a dummy value
+      for type dispatch. The KeyImporter interface is replaced by a plain function.
+    example:
+      before: |
+        jwk.RegisterKeyImporter(&myKeyType{}, jwk.KeyImportFunc(func(raw any) (jwk.Key, error) {
+            src, ok := raw.(*myKeyType)
+            if !ok {
+                return nil, errors.New("unexpected type")
+            }
+            // convert src to JWK
+        }))
+      after: |
+        jwk.RegisterKeyImporter(func(src *myKeyType) (jwk.Key, error) {
+            // convert src to JWK — no type assertion needed
+        })
+
+  - id: jwk-cache-removed
+    kind: removed
+    package: jwk
+    mechanical: false
+    v3: Cache
+    replacement: "github.com/jwx-go/jwkcache/v4"
+    search_patterns:
+      - 'jwk\.NewCache\('
+      - 'jwk\.Cache\b'
+      - 'jwk\.CachedSet\b'
+      - 'jwk\.NewCachedSet\('
+      - 'jwk\.CachedFetcher\b'
+      - 'jwk\.NewCachedFetcher\('
+    compiler_hints:
+      - 'undefined: jwk.Cache'
+      - 'undefined: jwk.NewCache'
+      - 'undefined: jwk.CachedSet'
+      - 'undefined: jwk.NewCachedSet'
+      - 'undefined: jwk.CachedFetcher'
+      - 'undefined: jwk.NewCachedFetcher'
+    note: >
+      jwk.Cache, jwk.NewCache, jwk.CachedSet, jwk.NewCachedSet, jwk.CachedFetcher,
+      and jwk.NewCachedFetcher are all removed from the core library.
+      Use the extension module github.com/jwx-go/jwkcache/v4 instead.
+      The new API uses jwkcache.NewCache(), c.Register(), and c.Lookup().
+    example:
+      before: |
+        import (
+            "github.com/lestrrat-go/httprc/v3"
+            "github.com/lestrrat-go/jwx/v3/jwk"
+        )
+
+        cache, err := jwk.NewCache(ctx, httprc.NewClient())
+        cache.Register(ctx, url, jwk.WithMinRefreshInterval(15*time.Minute))
+        set, err := cache.Lookup(ctx, url)
+      after: |
+        import (
+            "github.com/lestrrat-go/httprc/v3"
+            "github.com/jwx-go/jwkcache/v4"
+        )
+
+        cache, err := jwkcache.NewCache(ctx, httprc.NewClient())
+        cache.Register(ctx, url)
+        set, err := cache.Lookup(ctx, url)
+
+  - id: jwk-cacheoption-removed
+    kind: removed
+    package: jwk
+    mechanical: true
+    v3: CacheOption
+    search_patterns:
+      - 'CacheOption\b'
+    compiler_hints:
+      - 'undefined: jwk.CacheOption'
+    note: >
+      CacheOption interface removed. Use jwkcache options from
+      github.com/jwx-go/jwkcache/v4 instead.
+
+  - id: jwk-resourceoption-removed
+    kind: removed
+    package: jwk
+    mechanical: true
+    v3: ResourceOption
+    search_patterns:
+      - 'ResourceOption\b'
+    compiler_hints:
+      - 'undefined: jwk.ResourceOption'
+    note: ResourceOption interface removed along with the caching subsystem.
+
+  - id: jwk-registeroption-removed
+    kind: removed
+    package: jwk
+    mechanical: true
+    v3: RegisterOption
+    search_patterns:
+      - 'RegisterOption\b'
+    compiler_hints:
+      - 'undefined: jwk.RegisterOption'
+    note: RegisterOption interface removed along with the caching subsystem.
+
+  - id: jwk-registerfetchoption-removed
+    kind: removed
+    package: jwk
+    mechanical: true
+    v3: RegisterFetchOption
+    search_patterns:
+      - 'RegisterFetchOption\b'
+    compiler_hints:
+      - 'undefined: jwk.RegisterFetchOption'
+    note: RegisterFetchOption interface removed along with the caching subsystem.
+
+  - id: jwk-withhttprcresourceoption-removed
+    kind: removed
+    package: jwk
+    mechanical: true
+    v3: WithHttprcResourceOption
+    search_patterns:
+      - 'WithHttprcResourceOption\('
+    compiler_hints:
+      - 'undefined: jwk.WithHttprcResourceOption'
+    note: Removed along with the caching subsystem. Configure httprc directly via jwkcache.
+
+  - id: jwk-withconstantinterval-removed
+    kind: removed
+    package: jwk
+    mechanical: true
+    v3: WithConstantInterval
+    search_patterns:
+      - 'WithConstantInterval\('
+    compiler_hints:
+      - 'undefined: jwk.WithConstantInterval'
+    note: Removed along with the caching subsystem. Configure refresh intervals via httprc directly.
+
+  - id: jwk-withmininterval-removed
+    kind: removed
+    package: jwk
+    mechanical: true
+    v3: WithMinInterval
+    search_patterns:
+      - 'WithMinInterval\('
+    compiler_hints:
+      - 'undefined: jwk.WithMinInterval'
+    note: Removed along with the caching subsystem.
+
+  - id: jwk-withmaxinterval-removed
+    kind: removed
+    package: jwk
+    mechanical: true
+    v3: WithMaxInterval
+    search_patterns:
+      - 'WithMaxInterval\('
+    compiler_hints:
+      - 'undefined: jwk.WithMaxInterval'
+    note: Removed along with the caching subsystem.
+
+  - id: jwk-set-iterator
+    kind: type_change
+    package: jwk
+    mechanical: false
+    v3: "Set — no iterator methods"
+    v4: "Set.All() iter.Seq2[int, Key], Set.Fields() iter.Seq2[string, any]"
+    search_patterns:
+      - 'set\.Len\(\)'
+      - '\.Key\(\d'
+    note: >
+      jwk.Set now supports Go iterators. Use range loops with All() for keys
+      and Fields() for private parameters.
+    example:
+      before: |
+        for i := 0; i < set.Len(); i++ {
+            key, ok := set.Key(i)
+            if !ok {
+                continue
+            }
+            // use key
+        }
+      after: |
+        for _, key := range set.All() {
+            // use key
+        }
+
+  - id: jwk-keyimporter-type-removed
+    kind: type_change
+    package: jwk
+    mechanical: true
+    v3: "KeyImporter interface"
+    v4: "func(T) (Key, error)"
+    search_patterns:
+      - 'KeyImporter\b'
+      - 'KeyImportFunc\('
+    compiler_hints:
+      - 'undefined: jwk.KeyImporter'
+      - 'undefined: jwk.KeyImportFunc'
+    note: >
+      The KeyImporter and KeyImportFunc types are replaced by plain generic functions.
+      See RegisterKeyImporter rule above.
+
+  # ============================================================
+  # jws Package
+  # ============================================================
+
+  - id: jws-signer2-to-signer
+    kind: rename
+    package: jws
+    mechanical: true
+    v3: Signer2
+    v4: Signer
+    search_patterns:
+      - 'Signer2\b'
+    compiler_hints:
+      - 'undefined: jws.Signer2'
+    note: >
+      The Signer2 interface is renamed to Signer. The Algorithm() method is removed
+      from the interface — implementations no longer need it.
+      If you implemented Signer2, rename to Signer and remove the Algorithm() method.
+    example:
+      before: |
+        type MySigner struct{}
+        func (s MySigner) Algorithm() jwa.SignatureAlgorithm { return jwa.RS256() }
+        func (s MySigner) Sign(key any, payload []byte) ([]byte, error) { ... }
+        // implements jws.Signer2
+      after: |
+        type MySigner struct{}
+        func (s MySigner) Sign(key any, payload []byte) ([]byte, error) { ... }
+        // implements jws.Signer
+
+  - id: jws-verifier2-to-verifier
+    kind: rename
+    package: jws
+    mechanical: true
+    v3: Verifier2
+    v4: Verifier
+    search_patterns:
+      - 'Verifier2\b'
+    compiler_hints:
+      - 'undefined: jws.Verifier2'
+    note: >
+      The Verifier2 interface is renamed to Verifier.
+      If you implemented Verifier2, rename to Verifier.
+
+  - id: jws-register-signer
+    kind: signature_change
+    package: jws
+    mechanical: true
+    v3: RegisterSigner
+    v4: RegisterSigner
+    v3_signature: "RegisterSigner(alg jwa.SignatureAlgorithm, f any) error"
+    v4_signature: "RegisterSigner(alg jwa.SignatureAlgorithm, s Signer) error"
+    search_patterns:
+      - 'RegisterSigner\('
+    compiler_hints:
+      - 'cannot use .* as jws.Signer'
+    note: >
+      RegisterSigner now requires a concrete Signer (formerly Signer2) instead of any.
+      Remove type assertions or factory wrappers.
+    example:
+      before: |
+        jws.RegisterSigner(jwa.EdDSA(), mySignerFactory)
+      after: |
+        jws.RegisterSigner(jwa.EdDSA(), MySigner{})
+
+  - id: jws-register-verifier
+    kind: signature_change
+    package: jws
+    mechanical: true
+    v3: RegisterVerifier
+    v4: RegisterVerifier
+    v3_signature: "RegisterVerifier(alg jwa.SignatureAlgorithm, f any) error"
+    v4_signature: "RegisterVerifier(alg jwa.SignatureAlgorithm, v Verifier) error"
+    search_patterns:
+      - 'RegisterVerifier\('
+    compiler_hints:
+      - 'cannot use .* as jws.Verifier'
+    note: >
+      RegisterVerifier now requires a concrete Verifier (formerly Verifier2) instead of any.
+
+  - id: jws-signerfactory-removed
+    kind: removed
+    package: jws
+    mechanical: true
+    v3: SignerFactory
+    search_patterns:
+      - 'SignerFactory\b'
+    compiler_hints:
+      - 'undefined: jws.SignerFactory'
+    note: SignerFactory interface removed. Pass Signer directly to RegisterSigner.
+
+  - id: jws-signerfactoryfn-removed
+    kind: removed
+    package: jws
+    mechanical: true
+    v3: SignerFactoryFn
+    search_patterns:
+      - 'SignerFactoryFn\b'
+    compiler_hints:
+      - 'undefined: jws.SignerFactoryFn'
+    note: SignerFactoryFn type removed. Pass Signer directly to RegisterSigner.
+
+  - id: jws-signeradapter-removed
+    kind: removed
+    package: jws
+    mechanical: true
+    v3: SignerAdapter
+    search_patterns:
+      - 'SignerAdapter\b'
+    compiler_hints:
+      - 'undefined: jws.SignerAdapter'
+    note: SignerAdapter removed. The legacy Signer compatibility layer is gone.
+
+  - id: jws-verifierfactory-removed
+    kind: removed
+    package: jws
+    mechanical: true
+    v3: VerifierFactory
+    search_patterns:
+      - 'VerifierFactory\b'
+    compiler_hints:
+      - 'undefined: jws.VerifierFactory'
+    note: VerifierFactory interface removed. Pass Verifier directly to RegisterVerifier.
+
+  - id: jws-verifierfactoryfn-removed
+    kind: removed
+    package: jws
+    mechanical: true
+    v3: VerifierFactoryFn
+    search_patterns:
+      - 'VerifierFactoryFn\b'
+    compiler_hints:
+      - 'undefined: jws.VerifierFactoryFn'
+    note: VerifierFactoryFn type removed. Pass Verifier directly to RegisterVerifier.
+
+  - id: jws-verifideradapter-removed
+    kind: removed
+    package: jws
+    mechanical: true
+    v3: VerifierAdapter
+    search_patterns:
+      - 'VerifierAdapter\b'
+    compiler_hints:
+      - 'undefined: jws.VerifierAdapter'
+    note: VerifierAdapter removed. The legacy Verifier compatibility layer is gone.
+
+  - id: jws-withlegacysigners-removed
+    kind: removed
+    package: jws
+    mechanical: true
+    v3: WithLegacySigners
+    search_patterns:
+      - 'WithLegacySigners\('
+    compiler_hints:
+      - 'undefined: jws.WithLegacySigners'
+    note: >
+      WithLegacySigners option removed. Legacy signer support (v2-era Signer interface)
+      is gone. Migrate to the current Signer interface.
+
+  - id: jws-signerfor-return-type
+    kind: signature_change
+    package: jws
+    mechanical: true
+    v3: SignerFor
+    v4: SignerFor
+    v3_signature: "SignerFor(alg jwa.SignatureAlgorithm) (Signer2, error)"
+    v4_signature: "SignerFor(alg jwa.SignatureAlgorithm) (Signer, error)"
+    search_patterns:
+      - 'SignerFor\('
+    note: Return type changed from Signer2 to Signer.
+
+  - id: jws-verifierfor-return-type
+    kind: signature_change
+    package: jws
+    mechanical: true
+    v3: VerifierFor
+    v4: VerifierFor
+    v3_signature: "VerifierFor(alg jwa.SignatureAlgorithm) (Verifier2, error)"
+    v4_signature: "VerifierFor(alg jwa.SignatureAlgorithm) (Verifier, error)"
+    search_patterns:
+      - 'VerifierFor\('
+    note: Return type changed from Verifier2 to Verifier.
+
+  - id: jws-withkey-early-validation
+    kind: behavioral
+    package: jws
+    mechanical: false
+    v3: WithKey
+    note: >
+      jws.WithKey() now validates algorithm-key compatibility at construction time.
+      Code that previously compiled but failed at Sign()/Verify() time may now fail
+      earlier at the WithKey() call. This is intentional — fix the algorithm/key mismatch.
+
+  # ============================================================
+  # jwe Package
+  # ============================================================
+
+  - id: jwe-remove-legacy-header-merging
+    kind: removed
+    package: jwe
+    mechanical: true
+    v3: WithLegacyHeaderMerging
+    search_patterns:
+      - 'WithLegacyHeaderMerging\('
+    compiler_hints:
+      - 'undefined: jwe.WithLegacyHeaderMerging'
+    note: >
+      WithLegacyHeaderMerging option removed. Legacy header merging behavior
+      (from v2 era) is gone.
+
+  # ============================================================
+  # jwa Package
+  # ============================================================
+
+  - id: jwa-es256k-extension
+    kind: moved_to_extension
+    package: jwa
+    mechanical: true
+    v3: ES256K
+    extension_module: "github.com/jwx-go/es256k/v4"
+    search_patterns:
+      - 'jwa\.ES256K\('
+    compiler_hints:
+      - 'undefined: jwa.ES256K'
+    note: >
+      ES256K (secp256k1) is removed from the core library. Import the extension module
+      and call its Register() function to enable ES256K support.
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jwa"
+        alg := jwa.ES256K()
+      after: |
+        import (
+            "github.com/lestrrat-go/jwx/v4/jwa"
+            es256k "github.com/jwx-go/es256k/v4"
+        )
+        func init() { es256k.Register() }
+        // Then use jwa.ES256K() as before
+
+  - id: jwa-secp256k1-extension
+    kind: moved_to_extension
+    package: jwa
+    mechanical: true
+    v3: Secp256k1
+    extension_module: "github.com/jwx-go/es256k/v4"
+    search_patterns:
+      - 'jwa\.Secp256k1\('
+      - 'Secp256k1\b'
+    compiler_hints:
+      - 'undefined: jwa.Secp256k1'
+    note: >
+      The Secp256k1 elliptic curve identifier is removed from core.
+      Available via github.com/jwx-go/es256k/v4 after calling Register().
+
+  - id: jwa-ed448-extension
+    kind: moved_to_extension
+    package: jwa
+    mechanical: true
+    v3: Ed448
+    extension_module: "github.com/jwx-go/ed448/v4"
+    search_patterns:
+      - 'jwa\.Ed448\('
+      - 'Ed448\b'
+    compiler_hints:
+      - 'undefined: jwa.Ed448'
+    note: >
+      Ed448 curve and EdDSA-Ed448 support removed from core.
+      Use github.com/jwx-go/ed448/v4 and call Register().
+    example:
+      before: |
+        alg := jwa.Ed448()
+      after: |
+        import ed448 "github.com/jwx-go/ed448/v4"
+        func init() { ed448.Register() }
+        // Then use jwa.Ed448() as before
+
+  - id: jwa-eddsaed448-extension
+    kind: moved_to_extension
+    package: jwa
+    mechanical: true
+    v3: EdDSAEd448
+    extension_module: "github.com/jwx-go/ed448/v4"
+    search_patterns:
+      - 'EdDSAEd448\b'
+    compiler_hints:
+      - 'undefined: jwa.EdDSAEd448'
+    note: See Ed448 rule above. EdDSAEd448 is available after ed448.Register().
+
+  # ============================================================
+  # jwt Package
+  # ============================================================
+
+  - id: jwt-token-claims-iterator
+    kind: type_change
+    package: jwt
+    mechanical: false
+    v3: "Token — no iterator methods"
+    v4: "Token.Claims() iter.Seq2[string, any]"
+    search_patterns:
+      - 'token\.Keys\(\)'
+    note: >
+      jwt.Token now has a Claims() method returning an iterator over all claims
+      (standard and private). Use with range loops.
+    example:
+      before: |
+        // No standard way to iterate all claims in v3
+        // Typically used Get() for known fields
+      after: |
+        for name, value := range token.Claims() {
+            fmt.Printf("%s: %v\n", name, value)
+        }
+
+  # ============================================================
+  # Extension Module Migrations
+  # ============================================================
+
+  - id: jwk-cache-extension
+    kind: moved_to_extension
+    package: jwk
+    mechanical: false
+    v3: "Cache (jwk.NewCache, jwk.CachedSet, etc.)"
+    extension_module: "github.com/jwx-go/jwkcache/v4"
+    search_patterns:
+      - 'jwk\.NewCache\('
+      - 'jwk\.CachedSet\b'
+      - 'jwk\.CachedFetcher\b'
+    note: >
+      The entire JWK caching subsystem (Cache, NewCache, CachedSet, NewCachedSet,
+      CachedFetcher, NewCachedFetcher) moved to an extension module.
+      API changed: NewCache takes (ctx, *httprc.Client), Register replaces
+      cache.Register with refresh options, Get becomes Lookup.
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jwk"
+
+        cache := jwk.NewCache(ctx)
+        cache.Register(url, jwk.WithMinRefreshInterval(15*time.Minute))
+        set, err := cache.Get(ctx, url)
+      after: |
+        import (
+            "github.com/lestrrat-go/httprc/v3"
+            "github.com/jwx-go/jwkcache/v4"
+        )
+
+        cache, err := jwkcache.NewCache(ctx, httprc.NewClient())
+        cache.Register(ctx, url)
+        set, err := cache.Lookup(ctx, url)
+
+  - id: asmbase64-extension
+    kind: moved_to_extension
+    package: jwx
+    mechanical: true
+    v3: "Assembly-optimized base64 (build tag jwx_asmbase64)"
+    extension_module: "github.com/jwx-go/asmbase64/v4"
+    search_patterns:
+      - 'asmbase64'
+    note: >
+      Assembly base64 is no longer a build tag. Import the extension module
+      and call Register() in an init function.
+    example:
+      before: |
+        // Build with: go build -tags=jwx_asmbase64
+      after: |
+        import asmbase64 "github.com/jwx-go/asmbase64/v4"
+        func init() { asmbase64.Register() }
+
+  # ============================================================
+  # Dependency Changes
+  # ============================================================
+
+  - id: dep-blackmagic-removed
+    kind: removed
+    package: jwx
+    mechanical: true
+    v3: "github.com/lestrrat-go/blackmagic"
+    search_patterns:
+      - 'lestrrat-go/blackmagic'
+    file_patterns:
+      - "go.mod"
+    note: >
+      The blackmagic dependency (reflect-based type assignment) is removed.
+      v4 uses generics instead. No user action needed unless you imported
+      blackmagic directly for jwx interop.
+
+  - id: dep-goccy-removed
+    kind: removed
+    package: jwx
+    mechanical: true
+    v3: "github.com/goccy/go-json"
+    search_patterns:
+      - 'goccy/go-json'
+    file_patterns:
+      - "go.mod"
+    note: >
+      The goccy/go-json dependency is removed. v4 uses encoding/json/v2
+      (GOEXPERIMENT=jsonv2). No user action needed unless you relied on
+      goccy-specific JSON behavior.
+
+  - id: dep-segmentio-removed
+    kind: removed
+    package: jwx
+    mechanical: true
+    v3: "github.com/segmentio/asm"
+    search_patterns:
+      - 'segmentio/asm'
+    file_patterns:
+      - "go.mod"
+    note: >
+      The segmentio/asm dependency (assembly base64) is removed from core.
+      Use github.com/jwx-go/asmbase64/v4 extension module if needed.
+
+  - id: dep-option-v2-to-v3
+    kind: import_change
+    package: jwx
+    mechanical: true
+    v3: "github.com/lestrrat-go/option/v2"
+    v4: "github.com/lestrrat-go/option/v3"
+    search_patterns:
+      - 'lestrrat-go/option/v2'
+    file_patterns:
+      - "go.mod"
+    note: >
+      The option library upgraded from v2 to v3. This only affects users who
+      directly imported lestrrat-go/option for custom option types that interop
+      with jwx options.
