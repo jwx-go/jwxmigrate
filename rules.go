@@ -44,10 +44,11 @@ type Example struct {
 	After  string `yaml:"after"`
 }
 
-// CompiledRule is a Rule with pre-compiled search patterns.
+// CompiledRule is a Rule with pre-compiled search patterns and AST matchers.
 type CompiledRule struct {
 	Rule
-	Patterns []*regexp.Regexp
+	Patterns    []*regexp.Regexp
+	ASTMatchers []ASTMatcher
 }
 
 func loadRules() ([]CompiledRule, error) {
@@ -66,6 +67,7 @@ func loadRules() ([]CompiledRule, error) {
 			}
 			cr.Patterns = append(cr.Patterns, re)
 		}
+		cr.ASTMatchers = deriveASTMatchers(&r)
 		compiled = append(compiled, cr)
 	}
 
