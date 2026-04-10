@@ -172,9 +172,9 @@ rules:
       - 'too many arguments in call to'
       - '.Get undefined'
     note: >
-      The Get(name, &dst) method on Key, Token, JWS Headers, and JWE Headers is replaced
-      by Field(name) which returns (value, ok). For type-safe access, use the new generic
-      free function Get[T] in the respective package.
+      Replace Get(name, &dst) with the generic free function Get[T](obj, name)
+      in the respective package (jwk, jwt, jws, jwe). Alternatively, use
+      Field(name) which returns (any, bool).
     example:
       before: |
         var kid string
@@ -182,15 +182,7 @@ rules:
             return err
         }
       after: |
-        // Option 1: Use generic Get[T] (preferred for type safety)
         kid, err := jwk.Get[string](key, "kid")
-
-        // Option 2: Use Field() directly
-        v, ok := key.Field("kid")
-        if !ok {
-            return errors.New("kid not found")
-        }
-        kid, ok := v.(string)
 
   - id: register-custom-field-generic
     kind: signature_change
