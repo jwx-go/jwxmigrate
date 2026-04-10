@@ -60,6 +60,54 @@ func parseGoFile(filePath, rel string) (*ParsedGoFile, error) {
 	}, nil
 }
 
+// parseGoFileTyped attempts to load a single Go file with type information
+// via go/packages. Returns nil if type-checked loading fails.
+func parseGoFileTyped(filePath string) *ParsedGoFile {
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil
+	}
+	dir := filepath.Dir(absPath)
+
+	cfg := &packages.Config{
+		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo |
+			packages.NeedFiles | packages.NeedName | packages.NeedImports | packages.NeedModule,
+		Dir: dir,
+	}
+	pkgs, err := packages.Load(cfg, ".")
+	if err != nil {
+		return nil
+	}
+
+	for _, pkg := range pkgs {
+		if pkg.TypesInfo == nil || len(pkg.Errors) > 0 {
+			continue
+		}
+		for i, astFile := range pkg.Syntax {
+			if pkg.GoFiles[i] != absPath {
+				continue
+			}
+			v3Imports := buildV3ImportMap(astFile)
+			if len(v3Imports) == 0 {
+				return nil
+			}
+			src, err := os.ReadFile(absPath)
+			if err != nil {
+				return nil
+			}
+			return &ParsedGoFile{
+				RelPath:   filePath,
+				Src:       src,
+				FileSet:   pkg.Fset,
+				ASTFile:   astFile,
+				V3Imports: v3Imports,
+				TypesInfo: pkg.TypesInfo,
+			}
+		}
+	}
+	return nil
+}
+
 // checkGoFilesTyped discovers all Go module roots under dir and uses
 // go/packages to load packages with type information from each.
 // Returns findings and the set of absolute file paths that were processed.
