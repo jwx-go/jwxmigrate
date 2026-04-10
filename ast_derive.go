@@ -27,7 +27,7 @@ func deriveASTMatchers(r *Rule) []ASTMatcher {
 }
 
 func deriveImportChange(r *Rule) []ASTMatcher {
-	path := r.V3
+	path := r.FromVersion()
 	if path == "" {
 		// Fall back to first search pattern as the import path substring.
 		if len(r.SearchPatterns) > 0 {
@@ -44,7 +44,7 @@ func deriveImportChange(r *Rule) []ASTMatcher {
 }
 
 func deriveSignatureChange(r *Rule) []ASTMatcher {
-	name := r.V3
+	name := r.FromVersion()
 	if name == "" {
 		return nil
 	}
@@ -66,7 +66,7 @@ func deriveSignatureChange(r *Rule) []ASTMatcher {
 }
 
 func deriveRename(r *Rule) []ASTMatcher {
-	name := r.V3
+	name := r.FromVersion()
 	if name == "" {
 		return nil
 	}
@@ -107,8 +107,8 @@ func deriveRemovedOrMoved(r *Rule) []ASTMatcher {
 	names := extractNamesFromPatterns(r)
 	if len(names) == 0 {
 		// Fall back to v3 field.
-		if r.V3 != "" {
-			names = []string{r.V3}
+		if r.FromVersion() != "" {
+			names = []string{r.FromVersion()}
 		} else {
 			return nil
 		}
@@ -151,8 +151,8 @@ func deriveRemovedOrMoved(r *Rule) []ASTMatcher {
 func deriveTypeChange(r *Rule) []ASTMatcher {
 	// Extract names from search patterns for type references.
 	names := extractNamesFromPatterns(r)
-	if len(names) == 0 && r.V3 != "" {
-		names = []string{r.V3}
+	if len(names) == 0 && r.FromVersion() != "" {
+		names = []string{r.FromVersion()}
 	}
 
 	var matchers []ASTMatcher

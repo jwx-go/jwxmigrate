@@ -91,7 +91,7 @@ func f() {
 	path := filepath.Join(dir, "clean.go")
 	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
 
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
 	result, err := FixFile(path, rules)
@@ -123,7 +123,7 @@ func fixAndRead(t *testing.T, src string) string {
 	path := filepath.Join(dir, "test.go")
 	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
 
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
 	_, err = FixFile(path, rules)

@@ -40,7 +40,7 @@ func TestParseGoFile(t *testing.T) {
 }
 
 func TestNoFalsePositivesInComments(t *testing.T) {
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
 	result, err := Check("testdata", rules, CheckOptions{})
@@ -62,7 +62,7 @@ func TestNoFalsePositivesInComments(t *testing.T) {
 }
 
 func TestASTMatchAliasedImports(t *testing.T) {
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
 	result, err := Check("testdata", rules, CheckOptions{})
@@ -88,7 +88,7 @@ func TestASTMatchAliasedImports(t *testing.T) {
 }
 
 func TestASTMatchPositionInfo(t *testing.T) {
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
 	result, err := Check("testdata", rules, CheckOptions{RuleID: "jwk-import-generic"})
@@ -111,7 +111,7 @@ func TestASTMatchPositionInfo(t *testing.T) {
 }
 
 func TestASTMatchMethodCall(t *testing.T) {
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
 	result, err := Check("testdata", rules, CheckOptions{RuleID: "get-to-field"})

@@ -9,7 +9,7 @@ import (
 )
 
 func TestCheckV3Sample(t *testing.T) {
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
 	result, err := Check("testdata", rules, CheckOptions{})
@@ -50,7 +50,7 @@ func TestCheckV4Clean(t *testing.T) {
 	// Create a temp dir with only the clean file — but v4_clean.go
 	// doesn't import v3, so scanning testdata/ should produce no
 	// findings from v4_clean.go.
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
 	result, err := Check("testdata", rules, CheckOptions{})
@@ -63,7 +63,7 @@ func TestCheckV4Clean(t *testing.T) {
 }
 
 func TestCheckMechanicalFilter(t *testing.T) {
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
 	result, err := Check("testdata", rules, CheckOptions{MechanicalOnly: true})
@@ -76,7 +76,7 @@ func TestCheckMechanicalFilter(t *testing.T) {
 }
 
 func TestCheckRuleFilter(t *testing.T) {
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
 	result, err := Check("testdata", rules, CheckOptions{RuleID: "import-v3-to-v4"})
@@ -90,7 +90,7 @@ func TestCheckRuleFilter(t *testing.T) {
 }
 
 func TestFormatJSON(t *testing.T) {
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
 	result, err := Check("testdata", rules, CheckOptions{})
@@ -107,7 +107,7 @@ func TestFormatJSON(t *testing.T) {
 }
 
 func TestFormatText(t *testing.T) {
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
 	result, err := Check("testdata", rules, CheckOptions{})

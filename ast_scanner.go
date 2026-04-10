@@ -19,7 +19,8 @@ import (
 
 var versionSuffix = regexp.MustCompile(`^v\d+$`)
 
-const v3ImportPrefix = "github.com/lestrrat-go/jwx/v3"
+// sourceImportPrefix is set by loadRules based on the migration's "from" field.
+var sourceImportPrefix = "github.com/lestrrat-go/jwx/v3"
 
 // ParsedGoFile holds a parsed Go file with its v3 import mappings.
 // The Src and ASTFile fields are retained for future rewriting operations.
@@ -217,7 +218,7 @@ func buildV3ImportMap(f *ast.File) map[string]string {
 	imports := make(map[string]string)
 	for _, imp := range f.Imports {
 		importPath := strings.Trim(imp.Path.Value, `"`)
-		if !strings.HasPrefix(importPath, v3ImportPrefix) {
+		if !strings.HasPrefix(importPath, sourceImportPrefix) {
 			continue
 		}
 
@@ -445,7 +446,7 @@ func typeIsFromV3(t types.Type) bool {
 	if named, ok := t.(*types.Named); ok {
 		obj := named.Obj()
 		if obj != nil && obj.Pkg() != nil {
-			return strings.HasPrefix(obj.Pkg().Path(), v3ImportPrefix)
+			return strings.HasPrefix(obj.Pkg().Path(), sourceImportPrefix)
 		}
 	}
 
@@ -456,7 +457,7 @@ func typeIsFromV3(t types.Type) bool {
 		if named, ok := t.(*types.Named); ok {
 			obj := named.Obj()
 			if obj != nil && obj.Pkg() != nil {
-				return strings.HasPrefix(obj.Pkg().Path(), v3ImportPrefix)
+				return strings.HasPrefix(obj.Pkg().Path(), sourceImportPrefix)
 			}
 		}
 	}

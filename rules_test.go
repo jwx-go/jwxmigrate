@@ -7,7 +7,7 @@ import (
 )
 
 func TestLoadRules(t *testing.T) {
-	rules, err := loadRules()
+	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 	require.NotEmpty(t, rules)
 
@@ -44,11 +44,35 @@ func TestRuleKinds(t *testing.T) {
 		"build_change":       {},
 	}
 
-	rules, err := loadRules()
-	require.NoError(t, err)
+	for _, migration := range []string{"v3-to-v4", "v2-to-v4"} {
+		t.Run(migration, func(t *testing.T) {
+			rules, err := loadRules(migration)
+			require.NoError(t, err)
 
-	for _, r := range rules {
-		_, ok := validKinds[r.Kind]
-		require.True(t, ok, "rule %s has invalid kind %q", r.ID, r.Kind)
+			for _, r := range rules {
+				_, ok := validKinds[r.Kind]
+				require.True(t, ok, "rule %s has invalid kind %q", r.ID, r.Kind)
+			}
+		})
 	}
+}
+
+func TestLoadV2ToV4Rules(t *testing.T) {
+	rules, err := loadRules("v2-to-v4")
+	require.NoError(t, err)
+	require.NotEmpty(t, rules)
+
+	ids := make(map[string]struct{})
+	for _, r := range rules {
+		require.NotEmpty(t, r.ID, "rule missing id")
+		require.NotEmpty(t, r.Kind, "rule %s missing kind", r.ID)
+		require.NotEmpty(t, r.Note, "rule %s missing note", r.ID)
+
+		_, dup := ids[r.ID]
+		require.False(t, dup, "duplicate rule id: %s", r.ID)
+		ids[r.ID] = struct{}{}
+	}
+
+	// Verify the import prefix was set correctly.
+	require.Equal(t, "github.com/lestrrat-go/jwx/v2", sourceImportPrefix)
 }

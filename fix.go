@@ -236,11 +236,11 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 
 // fixImportChange rewrites an import path from v3 to v4.
 func fixImportChange(_ *ParsedGoFile, node *ast.ImportSpec, r *CompiledRule, byteOffset func(token.Pos) int) *Edit {
-	if r.V4 == "" {
+	if r.ToVersion() == "" {
 		return nil
 	}
 	oldPath := strings.Trim(node.Path.Value, `"`)
-	newPath := strings.Replace(oldPath, r.V3, r.V4, 1)
+	newPath := strings.Replace(oldPath, r.FromVersion(), r.ToVersion(), 1)
 	if newPath == oldPath {
 		return nil
 	}
@@ -257,13 +257,16 @@ func fixCall(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset f
 		return fixDeleteStatement(node, byteOffset, stmtOf)
 	case "rename":
 		sel, ok := node.Fun.(*ast.SelectorExpr)
-		if !ok || r.V4 == "" {
+		if !ok || r.ToVersion() == "" {
 			return nil
 		}
 		start := byteOffset(sel.Sel.Pos())
 		end := byteOffset(sel.Sel.End())
-		return []Edit{{Start: start, End: end, New: r.V4}}
+		return []Edit{{Start: start, End: end, New: r.ToVersion()}}
 	case "signature_change":
+		if ee := fixWithVerifyFalse(pf, node, r, byteOffset); ee != nil {
+			return ee
+		}
 		if ee := fixGetToField(pf, node, r, byteOffset, stmtOf); ee != nil {
 			return ee
 		}
@@ -397,6 +400,96 @@ func extractSourceText(pf *ParsedGoFile, expr ast.Expr) string {
 	return string(pf.Src[start:end])
 }
 
+// fixWithVerifyFalse rewrites jwt.Parse*/ParseString calls that contain
+// jwt.WithVerify(false) → jwt.ParseInsecure, preserving all other options.
+// For ParseString, the first arg is wrapped in []byte().
+func fixWithVerifyFalse(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int) []Edit {
+	if r.ID != "jwt-withverify-false-to-parseinsecure-v2" {
+		return nil
+	}
+	sel, ok := node.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return nil
+	}
+	funcName := sel.Sel.Name
+	if funcName != "Parse" && funcName != "ParseString" {
+		return nil
+	}
+
+	// Find the WithVerify(false) argument.
+	withVerifyIdx := -1
+	for i, arg := range node.Args {
+		if isWithVerifyFalse(pf, arg) {
+			withVerifyIdx = i
+			break
+		}
+	}
+	if withVerifyIdx < 0 {
+		// Matched the rule's function but no WithVerify(false) — skip, don't
+		// fall through to generic signature rename.
+		return []Edit{}
+	}
+
+	var edits []Edit
+
+	// 1. Rename the function to ParseInsecure.
+	edits = append(edits, Edit{
+		Start: byteOffset(sel.Sel.Pos()),
+		End:   byteOffset(sel.Sel.End()),
+		New:   "ParseInsecure",
+	})
+
+	// 2. For ParseString, wrap the first arg in []byte().
+	if funcName == "ParseString" && len(node.Args) > 0 {
+		firstArg := node.Args[0]
+		argText := extractSourceText(pf, firstArg)
+		edits = append(edits, Edit{
+			Start: byteOffset(firstArg.Pos()),
+			End:   byteOffset(firstArg.End()),
+			New:   "[]byte(" + argText + ")",
+		})
+	}
+
+	// 3. Remove the WithVerify(false) argument.
+	wvArg := node.Args[withVerifyIdx]
+	removeStart := byteOffset(wvArg.Pos())
+	removeEnd := byteOffset(wvArg.End())
+
+	// Also remove the surrounding comma+whitespace.
+	if withVerifyIdx > 0 {
+		// Remove leading ", "
+		prevEnd := byteOffset(node.Args[withVerifyIdx-1].End())
+		removeStart = prevEnd
+	} else if withVerifyIdx < len(node.Args)-1 {
+		// Remove trailing ", "
+		nextStart := byteOffset(node.Args[withVerifyIdx+1].Pos())
+		removeEnd = nextStart
+	}
+
+	edits = append(edits, Edit{
+		Start: removeStart,
+		End:   removeEnd,
+		New:   "",
+	})
+
+	return edits
+}
+
+// isWithVerifyFalse checks if an expression is jwt.WithVerify(false).
+func isWithVerifyFalse(pf *ParsedGoFile, expr ast.Expr) bool {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok || len(call.Args) != 1 {
+		return false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "WithVerify" {
+		return false
+	}
+	// Check arg is the identifier "false".
+	ident, ok := call.Args[0].(*ast.Ident)
+	return ok && ident.Name == "false"
+}
+
 // fixSignatureChange handles function renames where v3 != v4.
 func fixSignatureChange(node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int) []Edit {
 	sel, ok := node.Fun.(*ast.SelectorExpr)
@@ -404,12 +497,12 @@ func fixSignatureChange(node *ast.CallExpr, r *CompiledRule, byteOffset func(tok
 		return nil
 	}
 	// Only rename if the function name actually changed.
-	if r.V4 == "" || r.V3 == r.V4 {
+	if r.ToVersion() == "" || r.FromVersion() == r.ToVersion() {
 		return nil
 	}
 	start := byteOffset(sel.Sel.Pos())
 	end := byteOffset(sel.Sel.End())
-	return []Edit{{Start: start, End: end, New: r.V4}}
+	return []Edit{{Start: start, End: end, New: r.ToVersion()}}
 }
 
 // fixDeleteStatement deletes the entire statement containing a call expression.
@@ -425,7 +518,7 @@ func fixDeleteStatement(node ast.Node, byteOffset func(token.Pos) int, stmtOf ma
 
 // fixSelectorExpr renames a selector expression (e.g. jws.Signer2 → jws.Signer).
 func fixSelectorExpr(_ *ParsedGoFile, node *ast.SelectorExpr, r *CompiledRule, byteOffset func(token.Pos) int) *Edit {
-	newName := r.V4
+	newName := r.ToVersion()
 	if newName == "" {
 		newName = r.Replacement
 	}
@@ -439,7 +532,7 @@ func fixSelectorExpr(_ *ParsedGoFile, node *ast.SelectorExpr, r *CompiledRule, b
 
 // fixIdent renames a bare identifier.
 func fixIdent(_ *ParsedGoFile, node *ast.Ident, r *CompiledRule, byteOffset func(token.Pos) int) *Edit {
-	newName := r.V4
+	newName := r.ToVersion()
 	if newName == "" {
 		newName = r.Replacement
 	}
