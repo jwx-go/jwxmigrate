@@ -18,6 +18,7 @@ func main() {
 
 func run(args []string) error {
 	fset := flag.NewFlagSet("jwxmigrate", flag.ContinueOnError)
+	from := fset.String("from", "v3", "source version to migrate from: v2 or v3")
 	format := fset.String("format", "text", "output format: text or json")
 	mechanicalOnly := fset.Bool("mechanical", false, "only report mechanical (auto-fixable) rules")
 	ruleID := fset.String("rule", "", "only check a specific rule by ID")
@@ -32,7 +33,8 @@ func run(args []string) error {
 		target = fset.Arg(0)
 	}
 
-	rules, err := loadRules()
+	migration := *from + "-to-v4"
+	rules, err := loadRules(migration)
 	if err != nil {
 		return err
 	}
