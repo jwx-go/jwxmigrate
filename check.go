@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 )
@@ -23,6 +22,13 @@ type Finding struct {
 	Note          string `json:"note"`
 	ExampleBefore string `json:"example_before,omitempty"`
 	ExampleAfter  string `json:"example_after,omitempty"`
+
+	// Modification-support fields: precise position and node classification.
+	Col       int    `json:"col,omitempty"`
+	EndLine   int    `json:"end_line,omitempty"`
+	EndCol    int    `json:"end_col,omitempty"`
+	NodeKind  string `json:"node_kind,omitempty"`
+	MatchedBy string `json:"matched_by,omitempty"`
 }
 
 // CheckResult holds the aggregate output of a migration check.
@@ -33,22 +39,18 @@ type CheckResult struct {
 	Findings   []Finding `json:"findings"`
 }
 
-var v3ImportPattern = regexp.MustCompile(`lestrrat-go/jwx/v3`)
-
 // Check scans the given directory for v3 patterns and returns findings.
 func Check(dir string, rules []CompiledRule, opts CheckOptions) (*CheckResult, error) {
 	goRules, fileRules := splitRules(rules)
 
 	var findings []Finding
 
-	// Pass 1+2: Walk .go files, check for v3 imports, then scan for API patterns.
 	goFindings, err := checkGoFiles(dir, goRules, opts)
 	if err != nil {
 		return nil, err
 	}
 	findings = append(findings, goFindings...)
 
-	// Pass 3: Scan non-Go files for build-related rules.
 	buildFindings, err := checkBuildFiles(dir, fileRules, opts)
 	if err != nil {
 		return nil, err
@@ -80,14 +82,15 @@ type CheckOptions struct {
 	RuleID         string
 }
 
-// splitRules separates rules into Go-file rules (those with search_patterns)
-// and build-file rules (those with file_patterns).
+// splitRules separates rules into Go-file rules and build-file rules.
+// Go rules are those with AST matchers or search patterns.
+// Build rules are those with file_patterns.
 func splitRules(rules []CompiledRule) (goRules, fileRules []CompiledRule) {
 	for _, r := range rules {
 		if len(r.FilePatterns) > 0 {
 			fileRules = append(fileRules, r)
 		}
-		if len(r.Patterns) > 0 {
+		if len(r.ASTMatchers) > 0 || len(r.Patterns) > 0 {
 			goRules = append(goRules, r)
 		}
 	}
@@ -104,15 +107,23 @@ func shouldSkip(r *CompiledRule, opts CheckOptions) bool {
 	return false
 }
 
+// checkGoFiles scans Go files in dir. It uses type-checked loading where
+// possible (for precise receiver type matching on method calls), and falls
+// back to AST-only scanning for files that couldn't be type-checked (e.g.
+// in nested modules or with missing dependencies).
 func checkGoFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Finding, error) {
-	var findings []Finding
+	// Phase 1: type-checked loading — process whatever packages we can.
+	typedFindings, coveredFiles := checkGoFilesTyped(dir, rules, opts)
 
+	// Phase 2: walk all .go files, skip those already covered by typed loading.
+	var untypedFindings []Finding
+
+	absDir, _ := filepath.Abs(dir)
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// Skip hidden directories and vendor
 		name := d.Name()
 		if d.IsDir() {
 			if name == "vendor" || name == "node_modules" || (len(name) > 0 && name[0] == '.') {
@@ -125,88 +136,30 @@ func checkGoFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Findin
 			return nil
 		}
 
-		rel, err := filepath.Rel(dir, path)
+		absPath, _ := filepath.Abs(path)
+		if _, covered := coveredFiles[absPath]; covered {
+			return nil
+		}
+
+		rel, err := filepath.Rel(absDir, absPath)
 		if err != nil {
 			rel = path
 		}
 
-		ff, err := scanGoFile(path, rel, rules, opts)
+		pf, err := parseGoFile(absPath, rel)
 		if err != nil {
 			return err
 		}
-		findings = append(findings, ff...)
+		if pf == nil {
+			return nil
+		}
+
+		ff := scanGoFileAST(pf, rules, opts)
+		untypedFindings = append(untypedFindings, ff...)
 		return nil
 	})
 
-	return findings, err
-}
-
-func scanGoFile(path, rel string, rules []CompiledRule, opts CheckOptions) ([]Finding, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	// Pass 1: Check if file imports jwx/v3.
-	hasV3Import, err := fileContainsPattern(f, v3ImportPattern)
-	if err != nil {
-		return nil, err
-	}
-	if !hasV3Import {
-		return nil, nil
-	}
-
-	// Reset to beginning for pass 2.
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return nil, err
-	}
-
-	// Pass 2: Scan each line against all rule patterns.
-	var findings []Finding
-	scanner := bufio.NewScanner(f)
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
-
-		for i := range rules {
-			r := &rules[i]
-			if shouldSkip(r, opts) {
-				continue
-			}
-			for _, pat := range r.Patterns {
-				if pat.MatchString(line) {
-					finding := Finding{
-						RuleID:     r.ID,
-						File:       rel,
-						Line:       lineNum,
-						Text:       strings.TrimSpace(line),
-						Mechanical: r.Mechanical,
-						Note:       strings.TrimSpace(r.Note),
-					}
-					if r.Example != nil {
-						finding.ExampleBefore = strings.TrimSpace(r.Example.Before)
-						finding.ExampleAfter = strings.TrimSpace(r.Example.After)
-					}
-					findings = append(findings, finding)
-					break // one finding per rule per line
-				}
-			}
-		}
-	}
-
-	return findings, scanner.Err()
-}
-
-func fileContainsPattern(f *os.File, pat *regexp.Regexp) (bool, error) {
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		if pat.MatchString(scanner.Text()) {
-			return true, nil
-		}
-	}
-	return false, scanner.Err()
+	return append(typedFindings, untypedFindings...), err
 }
 
 func checkBuildFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Finding, error) {
@@ -230,7 +183,7 @@ func checkBuildFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Fin
 				}
 				ff, err := scanFileForRule(path, rel, r)
 				if err != nil {
-					continue // skip unreadable files
+					continue
 				}
 				findings = append(findings, ff...)
 			}
@@ -262,6 +215,7 @@ func scanFileForRule(path, rel string, r *CompiledRule) ([]Finding, error) {
 					Text:       strings.TrimSpace(line),
 					Mechanical: r.Mechanical,
 					Note:       strings.TrimSpace(r.Note),
+					MatchedBy:  "regex",
 				}
 				if r.Example != nil {
 					finding.ExampleBefore = strings.TrimSpace(r.Example.Before)
