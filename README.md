@@ -9,7 +9,7 @@ Designed for both human developers and AI coding agents.
 ## Install
 
 ```bash
-go install github.com/jwx-go/jwxmigrate@latest
+go install github.com/jwx-go/jwxmigrate/v4@latest
 ```
 
 ## Usage
