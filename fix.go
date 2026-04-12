@@ -39,7 +39,8 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 		}
 	}
 	if pf == nil {
-		return nil, nil // no v3 imports
+		// No v3 imports — nothing to fix, caller treats nil result as skip.
+		return nil, nil //nolint:nilnil
 	}
 
 	edits := collectEdits(pf, rules)
@@ -64,7 +65,8 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 	}
 	if len(edits) == 0 {
 		if len(unfixed) == 0 {
-			return nil, nil
+			// Nothing to fix and nothing remaining — caller treats nil as skip.
+			return nil, nil //nolint:nilnil
 		}
 		return &FixResult{File: filePath, Remaining: unfixed}, nil
 	}
@@ -95,6 +97,7 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 // taggedEdit is an Edit with its originating rule ID for reporting.
 type taggedEdit struct {
 	Edit
+
 	ruleID string
 }
 
@@ -174,7 +177,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					// Rules that need a single target name for rewriting (rename,
 					// signature_change) cannot use NamePattern — skip them here so
 					// we don't try to fix a call we can't safely rewrite.
-					if m.NamePattern != nil && (r.Kind == "rename" || r.Kind == "signature_change") {
+					if m.NamePattern != nil && (r.Kind == kindRename || r.Kind == kindSignatureChange) {
 						return true
 					}
 
@@ -207,7 +210,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					if m.Kind != MatchSelectorExpr {
 						return true
 					}
-					if m.NamePattern != nil && (r.Kind == "rename" || r.Kind == "signature_change") {
+					if m.NamePattern != nil && (r.Kind == kindRename || r.Kind == kindSignatureChange) {
 						return true
 					}
 					ident, ok := node.X.(*ast.Ident)
@@ -223,7 +226,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					if m.Kind != MatchIdent {
 						return true
 					}
-					if m.NamePattern != nil && (r.Kind == "rename" || r.Kind == "signature_change") {
+					if m.NamePattern != nil && (r.Kind == kindRename || r.Kind == kindSignatureChange) {
 						return true
 					}
 					if !m.MatchesName(node.Name) {
@@ -266,9 +269,9 @@ func fixImportChange(_ *ParsedGoFile, node *ast.ImportSpec, r *CompiledRule, byt
 // the enclosing statement for removed calls, or perform type-aware rewrites.
 func fixCall(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int, stmtOf map[ast.Node]ast.Stmt) []Edit {
 	switch r.Kind {
-	case "removed":
+	case kindRemoved:
 		return fixDeleteStatement(node, byteOffset, stmtOf)
-	case "rename":
+	case kindRename:
 		sel, ok := node.Fun.(*ast.SelectorExpr)
 		if !ok || r.ToVersion() == "" {
 			return nil
@@ -276,7 +279,7 @@ func fixCall(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset f
 		start := byteOffset(sel.Sel.Pos())
 		end := byteOffset(sel.Sel.End())
 		return []Edit{{Start: start, End: end, New: r.ToVersion()}}
-	case "signature_change":
+	case kindSignatureChange:
 		if ee := fixWithVerifyFalse(pf, node, r, byteOffset); ee != nil {
 			return ee
 		}
@@ -291,7 +294,7 @@ func fixCall(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset f
 // canFixWithTypes returns true if a non-mechanical rule can be fixed when
 // type information is available.
 func canFixWithTypes(r *CompiledRule, pf *ParsedGoFile) bool {
-	return r.ID == "get-to-field" && pf.TypesInfo != nil
+	return r.ID == ruleGetToField && pf.TypesInfo != nil
 }
 
 // fixSignatureChange handles function renames where v3 != v4.
@@ -299,7 +302,7 @@ func canFixWithTypes(r *CompiledRule, pf *ParsedGoFile) bool {
 // when type info is available to infer T and the receiver package.
 // Returns nil if this rule/call doesn't match the pattern.
 func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int, stmtOf map[ast.Node]ast.Stmt) []Edit {
-	if r.ID != "get-to-field" || pf.TypesInfo == nil {
+	if r.ID != ruleGetToField || pf.TypesInfo == nil {
 		return nil
 	}
 	sel, ok := node.Fun.(*ast.SelectorExpr)
@@ -432,7 +435,7 @@ func fixWithVerifyFalse(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, b
 	// Find the WithVerify(false) argument.
 	withVerifyIdx := -1
 	for i, arg := range node.Args {
-		if isWithVerifyFalse(pf, arg) {
+		if isWithVerifyFalse(arg) {
 			withVerifyIdx = i
 			break
 		}
@@ -489,7 +492,7 @@ func fixWithVerifyFalse(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, b
 }
 
 // isWithVerifyFalse checks if an expression is jwt.WithVerify(false).
-func isWithVerifyFalse(pf *ParsedGoFile, expr ast.Expr) bool {
+func isWithVerifyFalse(expr ast.Expr) bool {
 	call, ok := expr.(*ast.CallExpr)
 	if !ok || len(call.Args) != 1 {
 		return false

@@ -81,6 +81,7 @@ type Example struct {
 // CompiledRule is a Rule with pre-compiled search patterns and AST matchers.
 type CompiledRule struct {
 	Rule
+
 	Patterns    []*regexp.Regexp
 	ASTMatchers []ASTMatcher
 }

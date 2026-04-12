@@ -5,6 +5,26 @@ import (
 	"strings"
 )
 
+// packageAll is the sentinel Package value meaning "applies to every package".
+const packageAll = "all"
+
+// Rule kinds. Mirrors schema.yaml.
+const (
+	kindImportChange     = "import_change"
+	kindSignatureChange  = "signature_change"
+	kindRename           = "rename"
+	kindRemoved          = "removed"
+	kindBehavioral       = "behavioral"
+	kindTypeChange       = "type_change"
+	kindMovedToExtension = "moved_to_extension"
+	kindBuildChange      = "build_change"
+)
+
+// Rule IDs referenced by name in the fixer dispatcher.
+const (
+	ruleGetToField = "get-to-field"
+)
+
 // identAfterDot matches an identifier that follows a regex-escaped dot (`\.`).
 // Captures the identifier only.
 var identAfterDot = regexp.MustCompile(`\\\.([A-Za-z_][A-Za-z0-9_]*)`)
@@ -21,17 +41,17 @@ var standaloneIdent = regexp.MustCompile(
 // the rule's kind, package, v3 name, and search_patterns.
 func deriveASTMatchers(r *Rule) []ASTMatcher {
 	switch r.Kind {
-	case "import_change":
+	case kindImportChange:
 		return deriveImportChange(r)
-	case "signature_change":
+	case kindSignatureChange:
 		return deriveSignatureChange(r)
-	case "rename":
+	case kindRename:
 		return deriveRename(r)
-	case "removed", "moved_to_extension":
+	case kindRemoved, kindMovedToExtension:
 		return deriveRemovedOrMoved(r)
-	case "type_change":
+	case kindTypeChange:
 		return deriveTypeChange(r)
-	case "behavioral", "build_change":
+	case kindBehavioral, kindBuildChange:
 		// No AST matchers — behavioral uses regex fallback,
 		// build_change targets non-Go files only.
 		return nil
@@ -63,7 +83,7 @@ func deriveSignatureChange(r *Rule) []ASTMatcher {
 		return nil
 	}
 
-	if r.Package != "" && r.Package != "all" {
+	if r.Package != "" && r.Package != packageAll {
 		// Package-qualified call: e.g. jwk.Import(...)
 		return []ASTMatcher{{
 			Kind:    MatchCallExpr,
@@ -87,7 +107,7 @@ func deriveRename(r *Rule) []ASTMatcher {
 
 	var matchers []ASTMatcher
 
-	if r.Package != "" && r.Package != "all" {
+	if r.Package != "" && r.Package != packageAll {
 		// Qualified reference: e.g. jws.Signer2
 		matchers = append(matchers, ASTMatcher{
 			Kind:    MatchSelectorExpr,
@@ -139,7 +159,7 @@ func deriveRemovedOrMoved(r *Rule) []ASTMatcher {
 		if re == nil {
 			continue
 		}
-		if pkg == "" && r.Package != "" && r.Package != "all" {
+		if pkg == "" && r.Package != "" && r.Package != packageAll {
 			pkg = r.Package
 		}
 		kind := MatchSelectorExpr
@@ -166,7 +186,7 @@ func deriveRemovedOrMoved(r *Rule) []ASTMatcher {
 	}
 
 	for _, name := range names {
-		if r.Package != "" && r.Package != "all" {
+		if r.Package != "" && r.Package != packageAll {
 			if isCall {
 				matchers = append(matchers, ASTMatcher{
 					Kind:    MatchCallExpr,
@@ -235,11 +255,10 @@ func namePatternFromSearch(pat string) (string, *regexp.Regexp) {
 
 	// Split on `\.` — the part before is the package, the part after is
 	// the name-regex body.
-	idx := strings.Index(body, `\.`)
 	var pkg, nameRe string
-	if idx >= 0 {
-		pkg = body[:idx]
-		nameRe = body[idx+2:]
+	if before, after, found := strings.Cut(body, `\.`); found {
+		pkg = before
+		nameRe = after
 	} else {
 		nameRe = body
 	}
@@ -285,7 +304,7 @@ func deriveTypeChange(r *Rule) []ASTMatcher {
 
 	var matchers []ASTMatcher
 	for _, name := range names {
-		if r.Package != "" && r.Package != "all" {
+		if r.Package != "" && r.Package != packageAll {
 			matchers = append(matchers, ASTMatcher{
 				Kind:    MatchSelectorExpr,
 				PkgName: r.Package,

@@ -43,18 +43,14 @@ type CheckResult struct {
 func Check(dir string, rules []CompiledRule, opts CheckOptions) (*CheckResult, error) {
 	goRules, fileRules := splitRules(rules)
 
-	var findings []Finding
-
 	goFindings, err := checkGoFiles(dir, goRules, opts)
 	if err != nil {
 		return nil, err
 	}
-	findings = append(findings, goFindings...)
+	buildFindings := checkBuildFiles(dir, fileRules, opts)
 
-	buildFindings, err := checkBuildFiles(dir, fileRules, opts)
-	if err != nil {
-		return nil, err
-	}
+	findings := make([]Finding, 0, len(goFindings)+len(buildFindings))
+	findings = append(findings, goFindings...)
 	findings = append(findings, buildFindings...)
 
 	sort.Slice(findings, func(i, j int) bool {
@@ -126,7 +122,7 @@ func checkGoFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Findin
 
 		name := d.Name()
 		if d.IsDir() {
-			if name == "vendor" || name == "node_modules" || (len(name) > 0 && name[0] == '.') {
+			if shouldSkipWalkDir(name) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -162,7 +158,10 @@ func checkGoFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Findin
 	return append(typedFindings, untypedFindings...), err
 }
 
-func checkBuildFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Finding, error) {
+// checkBuildFiles is lenient about per-file errors: malformed globs,
+// unreadable files, and per-rule scan failures are skipped rather than
+// aborting the whole scan.
+func checkBuildFiles(dir string, rules []CompiledRule, opts CheckOptions) []Finding {
 	var findings []Finding
 
 	for i := range rules {
@@ -190,7 +189,7 @@ func checkBuildFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Fin
 		}
 	}
 
-	return findings, nil
+	return findings
 }
 
 func scanFileForRule(path, rel string, r *CompiledRule) ([]Finding, error) {
