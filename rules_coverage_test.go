@@ -20,16 +20,10 @@ var ruleCoverageExemptions = map[string]map[string]bool{
 	// v3-to-v4: pilot PR ships fixtures for one rule per kind. Everything
 	// else is exempt and will be added in follow-up PRs.
 	"v3-to-v4": {
-		"build-tag-goccy":                    true,
-		"build-tag-asmbase64":                true,
-		"build-tag-es256k":                   true,
-		"build-tag-secp256k1-pem":            true,
-		"rename-decodersettings-to-settings": true,
-		"get-to-field":                       true,
-		"register-custom-field-generic":      true,
-		"register-custom-decoder-generic":    true,
-		"remove-readfileoption":              true,
-		"remove-withfs":                      true,
+		"build-tag-goccy":         true,
+		"build-tag-asmbase64":     true,
+		"build-tag-es256k":        true,
+		"build-tag-secp256k1-pem": true,
 		// jwk option/Cache* rules: realistic call-site coverage lives in
 		// testdata/edge/jwk-cache-options which exercises NewCache plus
 		// every With*/Option* symbol in a single scenario. Per-rule
@@ -45,21 +39,24 @@ var ruleCoverageExemptions = map[string]map[string]bool{
 		// jws legacy signer/verifier factory+adapter subsystem: fully
 		// exercised in context by testdata/edge/jws-legacy-signers. All
 		// nine rules fire on the realistic registration chain there.
-		"jws-register-signer":                  true,
-		"jws-register-verifier":                true,
-		"jws-signerfactory-removed":            true,
-		"jws-signerfactoryfn-removed":          true,
-		"jws-signeradapter-removed":            true,
-		"jws-verifierfactory-removed":          true,
-		"jws-verifierfactoryfn-removed":        true,
-		"jws-verifideradapter-removed":         true,
-		"jws-withlegacysigners-removed":        true,
-		"jwe-remove-legacy-header-merging":     true,
-		"jwa-es256k-extension":                 true,
-		"jwa-secp256k1-extension":              true,
-		"jwa-ed448-extension":                  true,
-		"jwa-eddsaed448-extension":             true,
-		"jwt-token-claims-iterator":            true,
+		"jws-register-signer":              true,
+		"jws-register-verifier":            true,
+		"jws-signerfactory-removed":        true,
+		"jws-signerfactoryfn-removed":      true,
+		"jws-signeradapter-removed":        true,
+		"jws-verifierfactory-removed":      true,
+		"jws-verifierfactoryfn-removed":    true,
+		"jws-verifideradapter-removed":     true,
+		"jws-withlegacysigners-removed":    true,
+		"jwe-remove-legacy-header-merging": true,
+		"jwa-es256k-extension":             true,
+		"jwa-secp256k1-extension":          true,
+		"jwa-ed448-extension":              true,
+		"jwa-eddsaed448-extension":         true,
+		// jwt-withstrictbase64encoding-default is a pure documentation
+		// rule with no search_patterns: it advises users that the parse
+		// path now enforces strict base64 decoding by default. It can
+		// never fire on any code and therefore has no fixture.
 		"jwt-withstrictbase64encoding-default": true,
 		"asmbase64-extension":                  true,
 		"dep-blackmagic-removed":               true,
