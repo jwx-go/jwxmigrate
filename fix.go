@@ -7,7 +7,9 @@ import (
 	"go/token"
 	"go/types"
 	"os"
+	"path"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -247,6 +249,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 		}
 	}
 
+	edits = ensureOsImport(pf, edits, byteOffset)
 	return deduplicateEdits(edits)
 }
 
@@ -286,9 +289,91 @@ func fixCall(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset f
 		if ee := fixGetToField(pf, node, r, byteOffset, stmtOf); ee != nil {
 			return ee
 		}
+		if ee := fixReadFileToParseFS(pf, node, r, byteOffset); ee != nil {
+			return ee
+		}
 		return fixSignatureChange(node, r, byteOffset)
 	}
 	return nil
+}
+
+// fixReadFileToParseFS rewrites jwt.ReadFile("dir/file") →
+// jwt.ParseFS(os.DirFS("dir"), "file"), preserving any trailing options.
+// Non-literal path arguments return []Edit{} (match claimed but skipped)
+// so the caller does not fall through to a name-only rename that would
+// leave the call uncallable in v4.
+//
+// An "os" import is injected in collectEdits's post-pass if any of these
+// rewrites were emitted and the file doesn't already import "os".
+func fixReadFileToParseFS(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int) []Edit {
+	if r.ID != "readfile-to-parsefs" {
+		return nil
+	}
+	sel, ok := node.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return nil
+	}
+	if len(node.Args) == 0 {
+		return []Edit{}
+	}
+	lit, ok := node.Args[0].(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return []Edit{}
+	}
+	raw, err := strconv.Unquote(lit.Value)
+	if err != nil {
+		return []Edit{}
+	}
+
+	dir, file := path.Split(raw)
+	switch {
+	case dir == "":
+		dir = "."
+	case dir == "/":
+		// leave as "/"
+	default:
+		dir = strings.TrimSuffix(dir, "/")
+	}
+
+	newHead := fmt.Sprintf("ParseFS(os.DirFS(%q), %q", dir, file)
+	start := byteOffset(sel.Sel.Pos())
+	end := byteOffset(node.Args[0].End())
+	return []Edit{{Start: start, End: end, New: newHead}}
+}
+
+// ensureOsImport appends a single import edit inserting "os" into the
+// file's first import group, if any readfile-to-parsefs rewrite was
+// emitted and "os" is not already imported. No-op otherwise.
+func ensureOsImport(pf *ParsedGoFile, edits []taggedEdit, byteOffset func(token.Pos) int) []taggedEdit {
+	var hasReadFileFix bool
+	for _, e := range edits {
+		if e.ruleID == "readfile-to-parsefs" {
+			hasReadFileFix = true
+			break
+		}
+	}
+	if !hasReadFileFix {
+		return edits
+	}
+	for _, imp := range pf.ASTFile.Imports {
+		p, err := strconv.Unquote(imp.Path.Value)
+		if err == nil && p == "os" {
+			return edits
+		}
+	}
+	if len(pf.ASTFile.Imports) == 0 {
+		return edits
+	}
+	first := pf.ASTFile.Imports[0]
+	pos := byteOffset(first.Pos())
+	lineStart := pos
+	for lineStart > 0 && pf.Src[lineStart-1] != '\n' {
+		lineStart--
+	}
+	return append(edits, taggedEdit{
+		Edit:   Edit{Start: lineStart, End: lineStart, New: "\t\"os\"\n"},
+		ruleID: "readfile-to-parsefs",
+	})
 }
 
 // canFixWithTypes returns true if a non-mechanical rule can be fixed when

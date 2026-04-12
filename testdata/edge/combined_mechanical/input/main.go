@@ -9,7 +9,8 @@ import (
 // Several mechanical rules in one file. After running fix once:
 //   - all v3 imports become v4
 //   - Signer2 → Signer
-//   - ReadFile → ParseFS (name-only rewrite)
+//   - jwt.ReadFile("token.jwt") → jwt.ParseFS(os.DirFS("."), "token.jwt")
+//     (adds "os" to the import group)
 //   - DecoderSettings → Settings
 // A second fix pass must be a no-op and no v3 paths may remain.
 

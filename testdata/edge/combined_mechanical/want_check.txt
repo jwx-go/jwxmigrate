@@ -1,8 +1,8 @@
 main.go:4: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3"
 main.go:5: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jws"
 main.go:6: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jwt"
-main.go:18: [jws-signer2-to-signer] (mechanical) jws.Signer2
-main.go:23: [readfile-to-parsefs] (mechanical) jwt.ReadFile("token.jwt")
-main.go:25: [rename-decodersettings-to-settings] (mechanical) DecoderSettings
+main.go:19: [jws-signer2-to-signer] (mechanical) jws.Signer2
+main.go:24: [readfile-to-parsefs] (mechanical) jwt.ReadFile("token.jwt")
+main.go:26: [rename-decodersettings-to-settings] (mechanical) DecoderSettings
 
 total=6 mechanical=6 manual=0

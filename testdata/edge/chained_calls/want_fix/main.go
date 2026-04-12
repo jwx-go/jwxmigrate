@@ -2,6 +2,7 @@ package example
 
 import (
 	"github.com/lestrrat-go/jwx/v4/jwt"
+	"os"
 )
 
 // Each segment of a chained call should be evaluated independently by the
@@ -9,6 +10,6 @@ import (
 // with other operations.
 
 func example() {
-	tok, _ := jwt.ParseFS("token.jwt")
+	tok, _ := jwt.ParseFS(os.DirFS("."), "token.jwt")
 	_ = tok
 }
