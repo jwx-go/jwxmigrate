@@ -171,14 +171,21 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 						return true
 					}
 
+					// Rules that need a single target name for rewriting (rename,
+					// signature_change) cannot use NamePattern — skip them here so
+					// we don't try to fix a call we can't safely rewrite.
+					if m.NamePattern != nil && (r.Kind == "rename" || r.Kind == "signature_change") {
+						return true
+					}
+
 					switch m.Kind {
 					case MatchCallExpr:
 						ident, ok := sel.X.(*ast.Ident)
-						if !ok || sel.Sel.Name != m.Name || !matchesPkg(ident.Name, m.PkgName) {
+						if !ok || !m.MatchesName(sel.Sel.Name) || !matchesPkg(ident.Name, m.PkgName) {
 							return true
 						}
 					case MatchMethodCall:
-						if sel.Sel.Name != m.Name {
+						if !m.MatchesName(sel.Sel.Name) {
 							return true
 						}
 						if pf.TypesInfo != nil && !isV3Type(pf.TypesInfo, sel.X) {
@@ -200,8 +207,11 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					if m.Kind != MatchSelectorExpr {
 						return true
 					}
+					if m.NamePattern != nil && (r.Kind == "rename" || r.Kind == "signature_change") {
+						return true
+					}
 					ident, ok := node.X.(*ast.Ident)
-					if !ok || node.Sel.Name != m.Name || !matchesPkg(ident.Name, m.PkgName) {
+					if !ok || !m.MatchesName(node.Sel.Name) || !matchesPkg(ident.Name, m.PkgName) {
 						return true
 					}
 					e := fixSelectorExpr(pf, node, r, byteOffset)
@@ -213,7 +223,10 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					if m.Kind != MatchIdent {
 						return true
 					}
-					if node.Name != m.Name {
+					if m.NamePattern != nil && (r.Kind == "rename" || r.Kind == "signature_change") {
+						return true
+					}
+					if !m.MatchesName(node.Name) {
 						return true
 					}
 					if m.PkgName != "" {
