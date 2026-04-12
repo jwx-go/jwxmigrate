@@ -747,75 +747,91 @@ rules:
     kind: moved_to_extension
     package: jwa
     mechanical: true
-    v3: ES256K
+    v3: "jwa.ES256K"
+    v4: "es256k.ES256K"
     extension_module: "github.com/jwx-go/es256k/v4"
     search_patterns:
       - 'jwa\.ES256K\('
     compiler_hints:
       - 'undefined: jwa.ES256K'
     note: >
-      ES256K (secp256k1) is removed from the core library. Import the extension module
-      and call its Register() function to enable ES256K support.
+      ES256K is no longer in the core jwa package. Import
+      github.com/jwx-go/es256k/v4 and rewrite call sites from jwa.ES256K()
+      to es256k.ES256K(). No Register() call is needed — the accessor lives
+      in the extension package.
     example:
       before: |
         import "github.com/lestrrat-go/jwx/v3/jwa"
         alg := jwa.ES256K()
       after: |
-        import (
-            "github.com/lestrrat-go/jwx/v4/jwa"
-            es256k "github.com/jwx-go/es256k/v4"
-        )
-        func init() { es256k.Register() }
-        // Then use jwa.ES256K() as before
+        import es256k "github.com/jwx-go/es256k/v4"
+        alg := es256k.ES256K()
 
   - id: jwa-secp256k1-extension
     kind: moved_to_extension
     package: jwa
     mechanical: true
-    v3: Secp256k1
+    v3: "jwa.Secp256k1"
+    v4: "es256k.Secp256k1"
     extension_module: "github.com/jwx-go/es256k/v4"
     search_patterns:
       - 'jwa\.Secp256k1\('
-      - 'Secp256k1\b'
     compiler_hints:
       - 'undefined: jwa.Secp256k1'
     note: >
-      The Secp256k1 elliptic curve identifier is removed from core.
-      Available via github.com/jwx-go/es256k/v4 after calling Register().
+      The Secp256k1 elliptic curve identifier is no longer in core jwa.
+      Import github.com/jwx-go/es256k/v4 and rewrite jwa.Secp256k1() →
+      es256k.Secp256k1().
+    example:
+      before: |
+        curve := jwa.Secp256k1()
+      after: |
+        import es256k "github.com/jwx-go/es256k/v4"
+        curve := es256k.Secp256k1()
 
   - id: jwa-ed448-extension
     kind: moved_to_extension
     package: jwa
     mechanical: true
-    v3: Ed448
+    v3: "jwa.Ed448"
+    v4: "ed448.Ed448Curve"
     extension_module: "github.com/jwx-go/ed448/v4"
     search_patterns:
       - 'jwa\.Ed448\('
-      - 'Ed448\b'
     compiler_hints:
       - 'undefined: jwa.Ed448'
     note: >
-      Ed448 curve and EdDSA-Ed448 support removed from core.
-      Use github.com/jwx-go/ed448/v4 and call Register().
+      The Ed448 curve identifier moved to the ed448 extension package AND was
+      renamed: jwa.Ed448() → ed448.Ed448Curve(). Both the package and the
+      function name changed. Import github.com/jwx-go/ed448/v4.
     example:
       before: |
-        alg := jwa.Ed448()
+        curve := jwa.Ed448()
       after: |
         import ed448 "github.com/jwx-go/ed448/v4"
-        func init() { ed448.Register() }
-        // Then use jwa.Ed448() as before
+        curve := ed448.Ed448Curve()
 
   - id: jwa-eddsaed448-extension
     kind: moved_to_extension
     package: jwa
     mechanical: true
-    v3: EdDSAEd448
+    v3: "jwa.EdDSAEd448"
+    v4: "ed448.EdDSAEd448"
     extension_module: "github.com/jwx-go/ed448/v4"
     search_patterns:
-      - 'EdDSAEd448\b'
+      - 'jwa\.EdDSAEd448\('
     compiler_hints:
       - 'undefined: jwa.EdDSAEd448'
-    note: See Ed448 rule above. EdDSAEd448 is available after ed448.Register().
+    note: >
+      EdDSA-Ed448 moved to the ed448 extension package. Rewrite
+      jwa.EdDSAEd448() → ed448.EdDSAEd448(). Import
+      github.com/jwx-go/ed448/v4.
+    example:
+      before: |
+        alg := jwa.EdDSAEd448()
+      after: |
+        import ed448 "github.com/jwx-go/ed448/v4"
+        alg := ed448.EdDSAEd448()
 
   # ============================================================
   # jwt Package
@@ -943,14 +959,35 @@ rules:
   - id: dep-option-v2-to-v3
     kind: import_change
     package: jwx
-    mechanical: true
+    mechanical: false
     v3: "github.com/lestrrat-go/option/v2"
     v4: "github.com/lestrrat-go/option/v3"
     search_patterns:
       - 'lestrrat-go/option/v2'
+      - '\.Value\(\)\.\('
     file_patterns:
       - "go.mod"
     note: >
-      The option library upgraded from v2 to v3. This only affects users who
-      directly imported lestrrat-go/option for custom option types that interop
-      with jwx options.
+      The option library upgraded from v2 to v3, which uses generics. This
+      affects any user who directly imported lestrrat-go/option for custom
+      option types that interop with jwx options. Beyond the import path
+      change, the API for retrieving option values changed: v2 used
+      `opt.Value().(T)` (type assertion on any), v3 uses the generic helper
+      `option.MustGet[T](opt)`. Code with custom option types must update
+      both the import AND every value-retrieval site — the import rewrite
+      alone will not compile.
+    example:
+      before: |
+        import "github.com/lestrrat-go/option/v2"
+
+        func handle(opt option.Interface) {
+            v := opt.Value().(int)
+            _ = v
+        }
+      after: |
+        import "github.com/lestrrat-go/option/v3"
+
+        func handle(opt option.Interface) {
+            v := option.MustGet[int](opt)
+            _ = v
+        }

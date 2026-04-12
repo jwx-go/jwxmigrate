@@ -294,63 +294,57 @@ rules:
     kind: moved_to_extension
     package: jwa
     mechanical: true
-    v2: ES256K
+    v2: "jwa.ES256K"
+    v4: "es256k.ES256K"
     extension_module: "github.com/jwx-go/es256k/v4"
     search_patterns:
       - 'jwa\.ES256K\('
     compiler_hints:
       - 'undefined: jwa.ES256K'
     note: >
-      ES256K (secp256k1) is removed from the core library. Import the extension module
-      and call Register() to enable ES256K support.
+      ES256K moved out of core jwa. Rewrite jwa.ES256K() → es256k.ES256K()
+      and import github.com/jwx-go/es256k/v4.
     example:
       before: |
         alg := jwa.ES256K()
       after: |
         import es256k "github.com/jwx-go/es256k/v4"
-        func init() { es256k.Register() }
+        alg := es256k.ES256K()
 
   - id: jwa-secp256k1-extension-v2
     kind: moved_to_extension
     package: jwa
     mechanical: true
-    v2: Secp256k1
+    v2: "jwa.Secp256k1"
+    v4: "es256k.Secp256k1"
     extension_module: "github.com/jwx-go/es256k/v4"
     search_patterns:
       - 'jwa\.Secp256k1\('
-      - 'Secp256k1\b'
     compiler_hints:
       - 'undefined: jwa.Secp256k1'
     note: >
-      Secp256k1 elliptic curve is removed from core. Available via
-      github.com/jwx-go/es256k/v4 after calling Register().
+      Secp256k1 elliptic curve moved out of core jwa. Rewrite
+      jwa.Secp256k1() → es256k.Secp256k1() and import
+      github.com/jwx-go/es256k/v4.
 
   - id: jwa-ed448-extension-v2
     kind: moved_to_extension
     package: jwa
     mechanical: true
-    v2: Ed448
+    v2: "jwa.Ed448"
+    v4: "ed448.Ed448Curve"
     extension_module: "github.com/jwx-go/ed448/v4"
     search_patterns:
-      - 'jwa\.Ed448\('
-      - 'Ed448\b'
+      - 'jwa\.Ed448\b'
     compiler_hints:
       - 'undefined: jwa.Ed448'
     note: >
-      Ed448 curve and EdDSA-Ed448 support removed from core.
-      Use github.com/jwx-go/ed448/v4 and call Register().
-
-  - id: jwa-eddsaed448-extension-v2
-    kind: moved_to_extension
-    package: jwa
-    mechanical: true
-    v2: EdDSAEd448
-    extension_module: "github.com/jwx-go/ed448/v4"
-    search_patterns:
-      - 'EdDSAEd448\b'
-    compiler_hints:
-      - 'undefined: jwa.EdDSAEd448'
-    note: See Ed448 rule above. EdDSAEd448 is available after ed448.Register().
+      The Ed448 curve moved out of core jwa AND changed shape: in v2 it was
+      a constant (jwa.Ed448 of type EllipticCurveAlgorithm); in v4 it is a
+      function in the ed448 extension package (ed448.Ed448Curve()).
+      Rewrite jwa.Ed448 → ed448.Ed448Curve() and import
+      github.com/jwx-go/ed448/v4.
+      Note: EdDSA-Ed448 did not exist as a signature algorithm in v2.
 
   # ============================================================
   # jwk Package
