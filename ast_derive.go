@@ -279,7 +279,8 @@ func namePatternFromSearch(pat string) (string, *regexp.Regexp) {
 	// (letter, `_`, or `[...]`), otherwise it's unlikely to be a real name.
 	if !strings.HasPrefix(nameRe, "[") {
 		r := rune(nameRe[0])
-		if !(r >= 'A' && r <= 'Z') && !(r >= 'a' && r <= 'z') && r != '_' {
+		isLetter := (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')
+		if !isLetter && r != '_' {
 			return "", nil
 		}
 	}

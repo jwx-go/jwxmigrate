@@ -116,7 +116,7 @@ func runFix(target string, rules []CompiledRule) error {
 	}
 
 	if totalFixed == 0 {
-		fmt.Fprintln(os.Stdout, "no mechanical fixes to apply")
+		_, _ = fmt.Fprintln(os.Stdout, "no mechanical fixes to apply")
 	} else {
 		fmt.Fprintf(os.Stdout, "\n%d rule(s) applied\n", totalFixed)
 	}
