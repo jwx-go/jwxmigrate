@@ -5,32 +5,25 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jws"
 )
 
-// Realistic v3 legacy signer / verifier registration. What actually fires
-// today on this fixture:
+// Realistic v3 legacy signer / verifier registration. One fixture fires
+// every rule in the factory/adapter subsystem:
 //
-//   - jws-register-signer              — jws.RegisterSigner(...)
-//   - jws-register-verifier            — jws.RegisterVerifier(...)
-//   - jws-signerfactory-removed        — jws.SignerFactory   (type reference)
-//   - jws-verifierfactory-removed      — jws.VerifierFactory (type reference)
-//   - jws-withlegacysigners-removed    — jws.WithLegacySigners()
-//   - jws-signer2-to-signer            — jws.Signer2   return type
-//   - jws-verifier2-to-verifier        — jws.Verifier2 return type
+//   - jws-register-signer            — jws.RegisterSigner(...)
+//   - jws-register-verifier          — jws.RegisterVerifier(...)
+//   - jws-signerfactory-removed      — jws.SignerFactory   (type reference)
+//   - jws-signerfactoryfn-removed    — jws.SignerFactoryFn(fn)
+//   - jws-signeradapter-removed      — jws.SignerAdapter(v)
+//   - jws-verifierfactory-removed    — jws.VerifierFactory (type reference)
+//   - jws-verifierfactoryfn-removed  — jws.VerifierFactoryFn(fn)
+//   - jws-verifideradapter-removed   — jws.VerifierAdapter(v)
+//   - jws-withlegacysigners-removed  — jws.WithLegacySigners()
+//   - jws-signer2-to-signer          — jws.Signer2   return type
+//   - jws-verifier2-to-verifier      — jws.Verifier2 return type
 //
-// KNOWN SCANNER GAP: the following rules target identifiers used here as
-// call expressions (jws.SignerFactoryFn(fn), jws.SignerAdapter(v), and
-// their verifier counterparts). Their search patterns omit `\(`, so
-// ast_derive builds a SelectorExpr matcher only — and the scanner's
-// SelectorExpr branch explicitly skips nodes that are the Fun of a
-// CallExpr. Result: the calls below are silently missed today:
-//
-//   - jws-signerfactoryfn-removed
-//   - jws-signeradapter-removed
-//   - jws-verifierfactoryfn-removed
-//   - jws-verifideradapter-removed
-//
-// When ast_derive emits both CallExpr and SelectorExpr matchers for
-// kindRemoved (or the search patterns gain `\(`), regenerate this golden
-// and the four missed rules will light up.
+// Note: the fix pass does not delete the FactoryFn/Adapter calls from
+// inside the return/composite expressions. kindRemoved's deletion path
+// only targets ExprStmt / AssignStmt parents; calls nested inside other
+// expressions are reported but not rewritten.
 
 type legacySigner struct{}
 

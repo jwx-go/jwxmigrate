@@ -45,22 +45,18 @@ var ruleCoverageExemptions = map[string]map[string]bool{
 		// jwk-keyimporter-type-removed is covered in context by the
 		// jwk-register-key-importer fixture, which uses KeyImportFunc.
 		"jwk-keyimporter-type-removed": true,
-		// jws legacy signer/verifier factory+adapter subsystem: exercised
-		// in context by testdata/edge/jws-legacy-signers. The five rules
-		// below fire there today on the realistic call chain.
-		"jws-register-signer":           true,
-		"jws-register-verifier":         true,
-		"jws-signerfactory-removed":     true,
-		"jws-verifierfactory-removed":   true,
-		"jws-withlegacysigners-removed": true,
-		// The four below are *present* in the same fixture but are NOT
-		// matched today — their search patterns omit `\(` and ast_derive
-		// emits a SelectorExpr-only matcher, so the scanner silently skips
-		// calls. See the KNOWN SCANNER GAP note in the fixture's input.
+		// jws legacy signer/verifier factory+adapter subsystem: fully
+		// exercised in context by testdata/edge/jws-legacy-signers. All
+		// nine rules fire on the realistic registration chain there.
+		"jws-register-signer":                  true,
+		"jws-register-verifier":                true,
+		"jws-signerfactory-removed":            true,
 		"jws-signerfactoryfn-removed":          true,
 		"jws-signeradapter-removed":            true,
+		"jws-verifierfactory-removed":          true,
 		"jws-verifierfactoryfn-removed":        true,
 		"jws-verifideradapter-removed":         true,
+		"jws-withlegacysigners-removed":        true,
 		"jwe-remove-legacy-header-merging":     true,
 		"jwa-es256k-extension":                 true,
 		"jwa-secp256k1-extension":              true,
