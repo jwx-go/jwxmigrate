@@ -434,10 +434,10 @@ func fixReadFileToParseFS(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule,
 	}
 
 	dir, file := path.Split(raw)
-	switch {
-	case dir == "":
+	switch dir {
+	case "":
 		dir = "."
-	case dir == "/":
+	case "/":
 		// leave as "/"
 	default:
 		dir = strings.TrimSuffix(dir, "/")
