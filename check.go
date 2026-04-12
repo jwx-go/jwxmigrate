@@ -197,7 +197,7 @@ func scanFileForRule(path, rel string, r *CompiledRule) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var findings []Finding
 	scanner := bufio.NewScanner(f)
@@ -236,11 +236,11 @@ func FormatText(w io.Writer, result *CheckResult) {
 		if f.Mechanical {
 			label = "auto"
 		}
-		fmt.Fprintf(w, "[%s] (%s) %s:%d: %s\n", f.RuleID, label, f.File, f.Line, f.Text)
-		fmt.Fprintf(w, "  %s\n\n", f.Note)
+		_, _ = fmt.Fprintf(w, "[%s] (%s) %s:%d: %s\n", f.RuleID, label, f.File, f.Line, f.Text)
+		_, _ = fmt.Fprintf(w, "  %s\n\n", f.Note)
 	}
 
-	fmt.Fprintf(w, "Summary: %d items remaining (%d mechanical, %d require judgment)\n",
+	_, _ = fmt.Fprintf(w, "Summary: %d items remaining (%d mechanical, %d require judgment)\n",
 		result.Total, result.Mechanical, result.Judgment)
 }
 
