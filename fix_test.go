@@ -36,17 +36,18 @@ func f() {
 	require.NotContains(t, result, "Signer2")
 }
 
-func TestFixRemovedCall(t *testing.T) {
+func TestFixDecoderSettingsRename(t *testing.T) {
 	src := `package example
 
 import "github.com/lestrrat-go/jwx/v3"
 
 func f() {
-	jwx.DecoderSettings()
+	jwx.DecoderSettings(jwx.WithUseNumber(true))
 	println("keep this")
 }
 `
 	result := fixAndRead(t, src)
+	require.Contains(t, result, "jwx.Settings(jwx.WithUseNumber(true))")
 	require.NotContains(t, result, "DecoderSettings")
 	require.Contains(t, result, `println("keep this")`)
 }

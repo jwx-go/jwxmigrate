@@ -37,8 +37,7 @@ func TestCheckV3Sample(t *testing.T) {
 		"register-custom-field-generic",
 		"jws-signer2-to-signer",
 		"jwk-cache-removed",
-		"remove-decodersettings",
-		"remove-withusenumber",
+		"rename-decodersettings-to-settings",
 	}
 	for _, id := range expected {
 		_, ok := foundRules[id]
