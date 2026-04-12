@@ -532,13 +532,33 @@ func fixDeleteStatement(node ast.Node, byteOffset func(token.Pos) int, stmtOf ma
 	return []Edit{{Start: start, End: end, New: ""}}
 }
 
+// isGoIdent reports whether s is a valid Go identifier — starts with a
+// letter or underscore, followed by letters, digits, or underscores. Used
+// to reject rename targets that are actually prose (e.g. a rule whose v4
+// field is "func(T) (Key, error)" — a description, not a symbol).
+func isGoIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			continue
+		}
+		if i > 0 && r >= '0' && r <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // fixSelectorExpr renames a selector expression (e.g. jws.Signer2 → jws.Signer).
 func fixSelectorExpr(_ *ParsedGoFile, node *ast.SelectorExpr, r *CompiledRule, byteOffset func(token.Pos) int) *Edit {
 	newName := r.ToVersion()
 	if newName == "" {
 		newName = r.Replacement
 	}
-	if newName == "" {
+	if !isGoIdent(newName) {
 		return nil
 	}
 	start := byteOffset(node.Sel.Pos())
@@ -552,7 +572,7 @@ func fixIdent(_ *ParsedGoFile, node *ast.Ident, r *CompiledRule, byteOffset func
 	if newName == "" {
 		newName = r.Replacement
 	}
-	if newName == "" {
+	if !isGoIdent(newName) {
 		return nil
 	}
 	start := byteOffset(node.Pos())

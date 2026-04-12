@@ -307,11 +307,14 @@ func deriveTypeChange(r *Rule) []ASTMatcher {
 	var matchers []ASTMatcher
 	for _, name := range names {
 		if r.Package != "" && r.Package != packageAll {
-			matchers = append(matchers, ASTMatcher{
-				Kind:    MatchSelectorExpr,
-				PkgName: r.Package,
-				Name:    name,
-			})
+			// Emit both CallExpr and SelectorExpr so names used as call
+			// funs (e.g. jwk.KeyImportFunc(fn)) fire as well as type
+			// references (e.g. var _ jwk.KeyImporter = ...). The scanner
+			// dedupes findings per (ruleID, line).
+			matchers = append(matchers,
+				ASTMatcher{Kind: MatchCallExpr, PkgName: r.Package, Name: name},
+				ASTMatcher{Kind: MatchSelectorExpr, PkgName: r.Package, Name: name},
+			)
 		} else {
 			matchers = append(matchers, ASTMatcher{
 				Kind: MatchIdent,

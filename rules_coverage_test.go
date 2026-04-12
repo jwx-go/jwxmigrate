@@ -42,9 +42,6 @@ var ruleCoverageExemptions = map[string]map[string]bool{
 		"jwk-withconstantinterval-removed":     true,
 		"jwk-withmininterval-removed":          true,
 		"jwk-withmaxinterval-removed":          true,
-		// jwk-keyimporter-type-removed is covered in context by the
-		// jwk-register-key-importer fixture, which uses KeyImportFunc.
-		"jwk-keyimporter-type-removed": true,
 		// jws legacy signer/verifier factory+adapter subsystem: fully
 		// exercised in context by testdata/edge/jws-legacy-signers. All
 		// nine rules fire on the realistic registration chain there.
