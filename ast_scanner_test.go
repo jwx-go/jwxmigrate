@@ -98,7 +98,7 @@ func TestASTMatchPositionInfo(t *testing.T) {
 
 	var found *Finding
 	for i, f := range result.Findings {
-		if f.File == "v3_sample.go" && f.RuleID == "jwk-import-generic" {
+		if f.File == v3SampleFile && f.RuleID == "jwk-import-generic" {
 			found = &result.Findings[i]
 			break
 		}
@@ -116,12 +116,12 @@ func TestASTMatchMethodCall(t *testing.T) {
 	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
 
-	result, err := Check("testdata", rules, CheckOptions{RuleID: "get-to-field"})
+	result, err := Check("testdata", rules, CheckOptions{RuleID: ruleGetToField})
 	require.NoError(t, err)
 
 	var found bool
 	for _, f := range result.Findings {
-		if f.File == "v3_sample.go" && f.RuleID == "get-to-field" {
+		if f.File == v3SampleFile && f.RuleID == ruleGetToField {
 			found = true
 			require.Equal(t, "ast", f.MatchedBy)
 			break

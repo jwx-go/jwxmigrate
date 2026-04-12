@@ -140,7 +140,7 @@ func findGoFiles(dir string) ([]string, error) {
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if name == "vendor" || name == "node_modules" || (len(name) > 0 && name[0] == '.') {
+			if shouldSkipWalkDir(name) {
 				return filepath.SkipDir
 			}
 			return nil

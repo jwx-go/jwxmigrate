@@ -33,6 +33,15 @@ type ParsedGoFile struct {
 	TypesInfo *types.Info       // non-nil when type-checked loading succeeded
 }
 
+// shouldSkipWalkDir reports whether a directory should be skipped during
+// source-tree walks (vendor, node_modules, dotfile-prefixed dirs).
+func shouldSkipWalkDir(name string) bool {
+	if name == "vendor" || name == "node_modules" {
+		return true
+	}
+	return len(name) > 0 && name[0] == '.'
+}
+
 // parseGoFile parses a Go file and builds the v3 import map.
 // Returns nil (not error) if the file does not import any v3 package.
 func parseGoFile(filePath, rel string) (*ParsedGoFile, error) {
@@ -44,12 +53,15 @@ func parseGoFile(filePath, rel string) (*ParsedGoFile, error) {
 	fset := token.NewFileSet()
 	astFile, err := parser.ParseFile(fset, filePath, src, parser.ParseComments)
 	if err != nil {
-		return nil, nil
+		// Silently skip files that don't parse — testdata and broken Go
+		// files are not errors from the scanner's point of view.
+		return nil, nil //nolint:nilerr,nilnil
 	}
 
 	v3Imports := buildV3ImportMap(astFile)
 	if len(v3Imports) == 0 {
-		return nil, nil
+		// Not an error — file simply doesn't import v3, skip it.
+		return nil, nil //nolint:nilnil
 	}
 
 	return &ParsedGoFile{
@@ -141,11 +153,13 @@ func findModuleRoots(dir string) []string {
 	var roots []string
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			// Unreadable directories are skipped rather than aborting
+			// the whole walk. The outer WalkDir error is already discarded.
+			return nil //nolint:nilerr
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if name == "vendor" || name == "node_modules" || (len(name) > 0 && name[0] == '.') {
+			if shouldSkipWalkDir(name) {
 				return filepath.SkipDir
 			}
 			return nil

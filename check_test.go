@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const v3SampleFile = "v3_sample.go"
+
 func TestCheckV3Sample(t *testing.T) {
 	rules, err := loadRules("v3-to-v4")
 	require.NoError(t, err)
@@ -22,7 +24,7 @@ func TestCheckV3Sample(t *testing.T) {
 	// Collect rule IDs found from v3_sample.go.
 	foundRules := make(map[string]struct{})
 	for _, f := range result.Findings {
-		if f.File == "v3_sample.go" {
+		if f.File == v3SampleFile {
 			foundRules[f.RuleID] = struct{}{}
 		}
 	}
