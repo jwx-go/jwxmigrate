@@ -368,7 +368,7 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 			// Package-qualified calls: pkg.Func(...)
 			if ident, ok := sel.X.(*ast.Ident); ok {
 				for _, rm := range callMatchers {
-					if funcName == rm.matcher.Name && matchesPkg(ident.Name, rm.matcher.PkgName) {
+					if rm.matcher.MatchesName(funcName) && matchesPkg(ident.Name, rm.matcher.PkgName) {
 						addFinding(rm.rule, node, "CallExpr")
 					}
 				}
@@ -376,7 +376,7 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 
 			// Method calls: receiver.Method(...)
 			for _, rm := range methodMatchers {
-				if funcName != rm.matcher.Name {
+				if !rm.matcher.MatchesName(funcName) {
 					continue
 				}
 				if pf.TypesInfo != nil {
@@ -396,7 +396,7 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 			selName := node.Sel.Name
 			if ident, ok := node.X.(*ast.Ident); ok {
 				for _, rm := range selectorMatchers {
-					if selName == rm.matcher.Name && matchesPkg(ident.Name, rm.matcher.PkgName) {
+					if rm.matcher.MatchesName(selName) && matchesPkg(ident.Name, rm.matcher.PkgName) {
 						addFinding(rm.rule, node, "SelectorExpr")
 					}
 				}
@@ -404,7 +404,7 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 
 		case *ast.Ident:
 			for _, rm := range identMatchers {
-				if node.Name == rm.matcher.Name {
+				if rm.matcher.MatchesName(node.Name) {
 					if rm.matcher.PkgName == "" {
 						addFinding(rm.rule, node, "Ident")
 					} else if _, hasDot := pf.V3Imports["."]; hasDot {

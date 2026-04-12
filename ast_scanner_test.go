@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -148,6 +150,74 @@ func TestGoPkgName(t *testing.T) {
 	}
 }
 
+func TestNamePatternMatchesWildcardFamily(t *testing.T) {
+	// Rule using `jws\.Is\w+Error\(` should fire on any v2 IsXxxError call.
+	rules, err := loadRules("v2-to-v4")
+	require.NoError(t, err)
+
+	src := `package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jws"
+)
+
+func f(err error) {
+	if jws.IsSignatureError(err) {
+		return
+	}
+	if jws.IsVerificationError(err) {
+		return
+	}
+	if jws.IsUnsupportedAlgorithmError(err) {
+		return
+	}
+}
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "example.go")
+	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
+
+	result, err := Check(dir, rules, CheckOptions{RuleID: "jws-isxxxerror-removed-v2"})
+	require.NoError(t, err)
+	require.Equal(t, 3, result.Total, "should find 3 IsXxxError calls")
+	for _, f := range result.Findings {
+		require.Equal(t, "ast", f.MatchedBy, "expected AST match, not regex fallback")
+	}
+}
+
+func TestImportPathMatchesRemovedSubpackage(t *testing.T) {
+	// jwk/x25519 was a v2 subpackage removed in v4. A rule with search
+	// pattern `jwk/x25519` should match the import structurally.
+	rules, err := loadRules("v2-to-v4")
+	require.NoError(t, err)
+
+	src := `package example
+
+import (
+	_ "github.com/lestrrat-go/jwx/v2/jwk/x25519"
+	"github.com/lestrrat-go/jwx/v2/jwk"
+)
+
+var _ = jwk.Import
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "example.go")
+	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
+
+	result, err := Check(dir, rules, CheckOptions{RuleID: "jwk-x25519-removed-v2"})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, result.Total, 1, "should find at least 1 match")
+	// At least one finding should be AST-matched.
+	var hasAST bool
+	for _, f := range result.Findings {
+		if f.MatchedBy == "ast" {
+			hasAST = true
+			break
+		}
+	}
+	require.True(t, hasAST, "expected an AST match for jwk/x25519 import")
+}
+
 func TestExtractNameFromPattern(t *testing.T) {
 	tests := []struct {
 		pattern  string
@@ -160,6 +230,17 @@ func TestExtractNameFromPattern(t *testing.T) {
 		{`lestrrat-go/jwx/v3`, ""},
 		{`jwk\.NewCache\(`, "NewCache"},
 		{`ReadFile\(`, "ReadFile"},
+		// Patterns with arguments inside parentheses — identifier is still extractable.
+		{`\.Key\(\d`, "Key"},
+		{`\.Key\([A-Za-z0-9_]+\)`, "Key"},
+		{`\.Keys\(ctx`, "Keys"},
+		{`\.Keys\(context`, "Keys"},
+		// Pkg-qualified with trailing args.
+		{`jws\.Sign\(.*,`, "Sign"},
+		// Anchored patterns.
+		{`^go 1\.(?:1\d|2[0-5])(?:\.\d+)?\s*$`, ""},
+		// Wildcard name — no single identifier.
+		{`jws\.Is\w+Error\(`, ""},
 	}
 
 	for _, tt := range tests {

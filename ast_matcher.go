@@ -3,6 +3,7 @@ package main
 import (
 	"go/ast"
 	"go/token"
+	"regexp"
 )
 
 // ASTMatchKind classifies what AST structure a matcher targets.
@@ -29,6 +30,19 @@ type ASTMatcher struct {
 	ImportPath string // for MatchImportSpec: the import path substring to match
 	PkgName    string // for MatchSelectorExpr/MatchCallExpr: the expected package name (e.g. "jwk")
 	Name       string // the identifier name (function, type, method)
+	// NamePattern, when non-nil, replaces exact-Name matching with a regex.
+	// Used for rules like `jws\.Is\w+Error\(` where the target is a family
+	// of identifiers rather than a single name.
+	NamePattern *regexp.Regexp
+}
+
+// MatchesName reports whether the matcher matches a given identifier name.
+// Uses NamePattern if set, otherwise falls back to exact comparison with Name.
+func (m *ASTMatcher) MatchesName(name string) bool {
+	if m.NamePattern != nil {
+		return m.NamePattern.MatchString(name)
+	}
+	return m.Name == name
 }
 
 // ASTMatch is a single match result from walking the AST. It retains the
