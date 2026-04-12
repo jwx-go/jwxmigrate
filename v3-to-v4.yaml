@@ -192,6 +192,35 @@ rules:
       after: |
         jwt.RegisterCustomField[time.Time]("my-field")
 
+  - id: register-custom-decoder-generic
+    kind: signature_change
+    package: all
+    mechanical: false
+    v3: RegisterCustomDecoder
+    v4: RegisterCustomDecoder
+    v3_signature: "RegisterCustomDecoder(name string, dec CustomDecoder)"
+    v4_signature: "RegisterCustomDecoder[T any](name string, dec CustomDecodeFunc[T])"
+    search_patterns:
+      - 'RegisterCustomDecoder\('
+    compiler_hints:
+      - 'cannot use .* as jwk.CustomDecodeFunc'
+      - 'cannot use .* as jwt.CustomDecodeFunc'
+      - 'cannot use .* as jws.CustomDecodeFunc'
+      - 'cannot use .* as jwe.CustomDecodeFunc'
+      - 'not enough type arguments for'
+    note: >
+      RegisterCustomDecoder is now generic, matching RegisterCustomField.
+      Supply the decoded type as a type parameter and pass a CustomDecodeFunc[T]
+      instead of the old CustomDecoder interface. Applies to jwk, jws, jwe,
+      jwt, and jwt/openid.
+    example:
+      before: |
+        jwt.RegisterCustomDecoder("my-field", myDecoderImpl{})
+      after: |
+        jwt.RegisterCustomDecoder[time.Time]("my-field", func(data []byte) (time.Time, error) {
+            // decode data into a time.Time
+        })
+
   # ============================================================
   # All Packages — File I/O
   # ============================================================
@@ -517,6 +546,63 @@ rules:
       The KeyImporter and KeyImportFunc types are replaced by plain generic functions.
       See RegisterKeyImporter rule above.
 
+  - id: jwk-registerprobefield-generic
+    kind: signature_change
+    package: jwk
+    mechanical: false
+    v3: RegisterProbeField
+    v4: RegisterProbeField
+    v3_signature: "RegisterProbeField(field reflect.StructField) error"
+    v4_signature: "RegisterProbeField[T any](name, jsonKey string) error"
+    search_patterns:
+      - 'jwk\.RegisterProbeField\('
+    compiler_hints:
+      - 'cannot use reflect.StructField'
+      - 'not enough type arguments for jwk.RegisterProbeField'
+    note: >
+      jwk.RegisterProbeField changed from a reflect.StructField-based API to a
+      generic one. Supply the expected value type as T, and pass the Go field
+      name and JSON key as plain strings. Drop the `reflect` import if it is
+      no longer used.
+    example:
+      before: |
+        jwk.RegisterProbeField(reflect.StructField{
+            Name: "MyHint",
+            Type: reflect.TypeOf(""),
+            Tag:  `json:"my_hint"`,
+        })
+      after: |
+        jwk.RegisterProbeField[string]("MyHint", "my_hint")
+
+  - id: jwk-export-generic
+    kind: signature_change
+    package: jwk
+    mechanical: false
+    v3: Export
+    v4: Export
+    v3_signature: "Export(key Key, dst any) error"
+    v4_signature: "Export[T any](key Key) (T, error)"
+    search_patterns:
+      - 'jwk\.Export\('
+    compiler_hints:
+      - 'not enough type arguments for jwk.Export'
+      - 'too many arguments in call to jwk.Export'
+    note: >
+      jwk.Export is now generic. Instead of passing an output pointer as the
+      second argument, supply the expected raw key type as a type parameter
+      and use the returned value directly.
+    example:
+      before: |
+        var raw rsa.PrivateKey
+        if err := jwk.Export(key, &raw); err != nil {
+            return err
+        }
+      after: |
+        raw, err := jwk.Export[*rsa.PrivateKey](key)
+        if err != nil {
+            return err
+        }
+
   # ============================================================
   # jws Package
   # ============================================================
@@ -709,6 +795,47 @@ rules:
       Code that previously compiled but failed at Sign()/Verify() time may now fail
       earlier at the WithKey() call. This is intentional — fix the algorithm/key mismatch.
 
+  - id: jws-splitcompact-moved
+    kind: moved_to_extension
+    package: jws
+    mechanical: true
+    v3: "jws.SplitCompact"
+    v4: "jwsbb.SplitCompact"
+    search_patterns:
+      - 'jws\.SplitCompact\('
+      - 'jws\.SplitCompactString\('
+      - 'jws\.SplitCompactReader\('
+    compiler_hints:
+      - 'undefined: jws.SplitCompact'
+      - 'undefined: jws.SplitCompactString'
+      - 'undefined: jws.SplitCompactReader'
+    note: >
+      jws.SplitCompact, jws.SplitCompactString, and jws.SplitCompactReader are
+      removed from the jws package. Use the equivalents in
+      github.com/lestrrat-go/jwx/v4/jws/jwsbb — the signatures are unchanged,
+      only the package moved.
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jws"
+        hdr, pl, sig, err := jws.SplitCompact(buf)
+      after: |
+        import "github.com/lestrrat-go/jwx/v4/jws/jwsbb"
+        hdr, pl, sig, err := jwsbb.SplitCompact(buf)
+
+  - id: jws-legacy-package-removed
+    kind: removed
+    package: jws
+    mechanical: false
+    v3: "github.com/lestrrat-go/jwx/v3/jws/legacy"
+    search_patterns:
+      - 'lestrrat-go/jwx/v[34]/jws/legacy'
+    compiler_hints:
+      - 'no required module provides package github.com/lestrrat-go/jwx/v4/jws/legacy'
+    note: >
+      The entire jws/legacy subpackage is removed in v4. Any code that imported
+      jws/legacy for the pre-v3 Signer/Verifier compatibility layer must be
+      migrated to the current Signer/Verifier interfaces in jws.
+
   # ============================================================
   # jwe Package
   # ============================================================
@@ -843,6 +970,67 @@ rules:
         for name, value := range token.Claims() {
             fmt.Printf("%s: %v\n", name, value)
         }
+
+  - id: jwt-validate-errors-structured
+    kind: behavioral
+    package: jwt
+    mechanical: false
+    v3: "jwt.Validate errors (sentinel-based)"
+    v4: "jwt.Validate errors (structured, aggregated)"
+    search_patterns:
+      - 'jwt\.TokenExpiredError\(\)'
+      - 'jwt\.TokenNotYetValidError\(\)'
+      - 'jwt\.InvalidIssuedAtError\(\)'
+      - 'errors\.Is\(.*jwt\.(TokenExpired|TokenNotYetValid|InvalidIssuedAt)Error'
+    compiler_hints:
+      - 'cannot call non-function jwt.TokenExpiredError'
+      - 'cannot call non-function jwt.TokenNotYetValidError'
+      - 'cannot call non-function jwt.InvalidIssuedAtError'
+    note: >
+      jwt.Validate() now collects ALL validation failures instead of stopping at
+      the first one, and returns structured error types carrying the claim value,
+      current time, and skew. TokenExpiredError / TokenNotYetValidError /
+      InvalidIssuedAtError are now struct types (not functions returning sentinel
+      errors). Use errors.As (or errors.AsType) to extract a typed error and read
+      its fields. Use errors.Is with a zero-value struct literal to test identity.
+      Code that matched on error strings or called TokenExpiredError() as a
+      function must be rewritten.
+    example:
+      before: |
+        if err := jwt.Validate(tok); err != nil {
+            if errors.Is(err, jwt.TokenExpiredError()) {
+                return fmt.Errorf("token expired")
+            }
+            return err
+        }
+      after: |
+        if err := jwt.Validate(tok); err != nil {
+            var expErr jwt.TokenExpiredError
+            if errors.As(err, &expErr) {
+                return fmt.Errorf("token expired at %s (now=%s)", expErr.Expiration, expErr.Now)
+            }
+            return err
+        }
+
+  - id: jwt-withstrictbase64encoding-default
+    kind: behavioral
+    package: jwt
+    mechanical: false
+    v3: "(no option — base64 decoding was lenient)"
+    v4: "jwt.WithStrictBase64Encoding(bool) — default true"
+    note: >
+      v4 adds jwt.WithStrictBase64Encoding (default true), enforcing strict
+      RFC-compliant base64url decoding during parse. Tokens produced by
+      non-conformant providers that parsed fine under v3 may be rejected under
+      v4 with base64 decoding errors. If you must accept such tokens, pass
+      jwt.WithStrictBase64Encoding(false) to the parse call. No action is needed
+      if your tokens come from a conformant producer.
+    example:
+      before: |
+        tok, err := jwt.Parse(data)
+      after: |
+        // Only if you know the producer emits non-standard base64:
+        tok, err := jwt.Parse(data, jwt.WithStrictBase64Encoding(false))
 
   # ============================================================
   # Extension Module Migrations
