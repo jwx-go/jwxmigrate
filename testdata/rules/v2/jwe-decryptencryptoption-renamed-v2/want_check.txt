@@ -1,0 +1,3 @@
+main.go:10: [jwe-decryptencryptoption-renamed-v2] (mechanical) jwe.DecryptEncryptOption
+
+total=1 mechanical=1 manual=0

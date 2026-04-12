@@ -1,0 +1,3 @@
+main.go:12: [jwk-register-key-importer] (manual) jwk.RegisterKeyImporter(&myKeyType{}, jwk.KeyImportFunc(func(raw any) (jwk.Key, error) { if _, ok := raw.(*myKeyType); !ok { return nil, errors.New("unexpected type") } return nil, nil }))
+
+total=1 mechanical=0 manual=1

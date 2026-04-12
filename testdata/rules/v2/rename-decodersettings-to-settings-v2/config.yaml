@@ -1,0 +1,2 @@
+migration: v2-to-v4
+rule_id: rename-decodersettings-to-settings-v2

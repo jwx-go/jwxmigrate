@@ -1,0 +1,4 @@
+main.go:8: [jwe-isxxxerror-removed-v2] (manual) jwe.IsDecryptError(err)
+main.go:11: [jwe-isxxxerror-removed-v2] (manual) jwe.IsEncryptError(err)
+
+total=2 mechanical=0 manual=2

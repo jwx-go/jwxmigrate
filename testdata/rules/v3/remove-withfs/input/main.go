@@ -1,0 +1,19 @@
+package example
+
+import (
+	"io/fs"
+
+	"github.com/lestrrat-go/jwx/v3/jwt"
+)
+
+// jwt.WithFS is removed in v4 — the fs.FS is passed directly as the
+// first arg to ParseFS. The rule fires on the call site; the fix path
+// tries to delete the enclosing statement. For a standalone assignment
+// like `_ = jwt.WithFS(fsys)` the AssignStmt parent lets deletion
+// succeed; when the call is nested inside another function call (e.g.
+// `jwt.ReadFile(path, jwt.WithFS(fsys))`) the fixer reports but does
+// not delete — user rewrites the outer call.
+
+func example(fsys fs.FS) {
+	_ = jwt.WithFS(fsys)
+}

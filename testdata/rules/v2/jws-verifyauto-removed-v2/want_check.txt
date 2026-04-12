@@ -1,0 +1,3 @@
+main.go:8: [jws-verifyauto-removed-v2] (manual) jws.VerifyAuto(payload)
+
+total=1 mechanical=0 manual=1

@@ -1,0 +1,4 @@
+main.go:11: [jwk-keyimporter-type-removed-v2] (mechanical) jwk.KeyImporter
+main.go:14: [jwk-keyimporter-type-removed-v2] (mechanical) jwk.KeyImportFunc(func(any) (jwk.Key, error) { return nil, nil })
+
+total=2 mechanical=2 manual=0

@@ -1,0 +1,3 @@
+main.go:8: [jwt-withkeysetprovider-removed-v2] (manual) jwt.WithKeySetProvider(nil)
+
+total=1 mechanical=0 manual=1

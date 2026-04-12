@@ -1,0 +1,3 @@
+Makefile:3: [build-tag-asmbase64-v2] (mechanical) go test -tags=jwx_asmbase64 ./...
+
+total=1 mechanical=1 manual=0

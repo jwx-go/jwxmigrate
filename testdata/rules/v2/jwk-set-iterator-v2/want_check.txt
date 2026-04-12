@@ -1,0 +1,3 @@
+main.go:14: [jwk-set-iterator-v2] (manual) set.Keys(ctx)
+
+total=1 mechanical=0 manual=1

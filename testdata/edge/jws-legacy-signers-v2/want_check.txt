@@ -1,0 +1,13 @@
+main.go:4: [import-v2-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v2/jwa"
+main.go:5: [import-v2-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v2/jws"
+main.go:31: [jws-signerfactory-removed-v2] (mechanical) jws.SignerFactory
+main.go:31: [jws-signerfactoryfn-removed-v2] (mechanical) jws.SignerFactoryFn(func() (jws.Signer2, error) { return jws.SignerAdapter(legacySigner{}), nil })
+main.go:31: [jws-signer2-to-signer-v2] (mechanical) jws.Signer2
+main.go:32: [jws-signeradapter-removed-v2] (mechanical) jws.SignerAdapter(legacySigner{})
+main.go:36: [jws-verifierfactory-removed-v2] (mechanical) jws.VerifierFactory
+main.go:36: [jws-verifierfactoryfn-removed-v2] (mechanical) jws.VerifierFactoryFn(func() (jws.Verifier2, error) { return jws.VerifierAdapter(legacyVerifier{}), nil })
+main.go:36: [jws-verifier2-to-verifier-v2] (mechanical) jws.Verifier2
+main.go:37: [jws-verifideradapter-removed-v2] (mechanical) jws.VerifierAdapter(legacyVerifier{})
+main.go:43: [jws-withlegacysigners-removed-v2] (mechanical) jws.WithLegacySigners()
+
+total=11 mechanical=11 manual=0

@@ -7,7 +7,9 @@ import (
 	"go/token"
 	"go/types"
 	"os"
+	"path"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -45,20 +47,29 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 
 	edits := collectEdits(pf, rules)
 
-	// Track which rules were fixed so we can exclude them from remaining.
-	fixedRules := make(map[string]struct{})
+	// Correlate edits back to findings by (ruleID, line) so the remaining
+	// list reports every finding that did NOT receive an edit — mechanical
+	// or not. This catches rules that matched in Check but whose fixer
+	// couldn't emit an edit (e.g. kindRemoved calls nested inside a
+	// composite literal with no statement parent). Previously those rules
+	// were silently dropped from the remaining list because the old logic
+	// blanket-skipped everything marked Mechanical.
+	type fixKey struct {
+		ruleID string
+		line   int
+	}
+	fixedAt := make(map[fixKey]struct{}, len(edits))
 	for _, e := range edits {
-		fixedRules[e.ruleID] = struct{}{}
+		if e.line == 0 {
+			continue // side-effect edit (import injection); no finding
+		}
+		fixedAt[fixKey{ruleID: e.ruleID, line: e.line}] = struct{}{}
 	}
 
-	// Collect findings and filter out those that are mechanical or were fixed.
 	allFindings := scanGoFileAST(pf, rules, CheckOptions{})
 	var unfixed []Finding
 	for _, f := range allFindings {
-		if f.Mechanical {
-			continue
-		}
-		if _, fixed := fixedRules[f.RuleID]; fixed {
+		if _, fixed := fixedAt[fixKey{ruleID: f.RuleID, line: f.Line}]; fixed {
 			continue
 		}
 		unfixed = append(unfixed, f)
@@ -94,11 +105,20 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 	return &FixResult{File: filePath, Applied: ids, Remaining: unfixed}, nil
 }
 
-// taggedEdit is an Edit with its originating rule ID for reporting.
+// taggedEdit is an Edit with its originating rule ID and the source line
+// of the matched node. The line is used to correlate edits back to Check
+// findings so FixFile can report which findings remain unfixed at the
+// per-location level (not per-rule).
+//
+// Side-effect edits that are not tied to a specific finding — e.g. the
+// import-injection edits emitted by ensureOsImport / ensureExtensionImports
+// — use line=0. Zero is never a real Check-finding line, so it can't
+// falsely mark any finding as fixed.
 type taggedEdit struct {
 	Edit
 
 	ruleID string
+	line   int
 }
 
 // collectEdits walks the AST and collects all applicable mechanical edits.
@@ -121,6 +141,9 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 
 	byteOffset := func(pos token.Pos) int {
 		return int(pos) - base
+	}
+	lineOf := func(n ast.Node) int {
+		return pf.FileSet.Position(n.Pos()).Line
 	}
 
 	// Pre-index: map ast.Node → parent statement for statement deletion.
@@ -165,7 +188,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					}
 					e := fixImportChange(pf, node, r, byteOffset)
 					if e != nil {
-						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID})
+						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID, line: lineOf(node)})
 					}
 
 				case *ast.CallExpr:
@@ -200,7 +223,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 
 					ee := fixCall(pf, node, r, byteOffset, stmtOf)
 					for _, e := range ee {
-						edits = append(edits, taggedEdit{Edit: e, ruleID: r.ID})
+						edits = append(edits, taggedEdit{Edit: e, ruleID: r.ID, line: lineOf(node)})
 					}
 
 				case *ast.SelectorExpr:
@@ -217,9 +240,15 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					if !ok || !m.MatchesName(node.Sel.Name) || !matchesPkg(ident.Name, m.PkgName) {
 						return true
 					}
+					if r.Kind == kindMovedToExtension {
+						for _, e := range fixMoveToExtensionSelectorExpr(node, r, byteOffset) {
+							edits = append(edits, taggedEdit{Edit: e, ruleID: r.ID, line: lineOf(node)})
+						}
+						return true
+					}
 					e := fixSelectorExpr(pf, node, r, byteOffset)
 					if e != nil {
-						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID})
+						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID, line: lineOf(node)})
 					}
 
 				case *ast.Ident:
@@ -239,7 +268,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					}
 					e := fixIdent(pf, node, r, byteOffset)
 					if e != nil {
-						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID})
+						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID, line: lineOf(node)})
 					}
 				}
 				return true
@@ -247,6 +276,8 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 		}
 	}
 
+	edits = ensureOsImport(pf, edits, byteOffset)
+	edits = ensureExtensionImports(pf, edits, rules, byteOffset)
 	return deduplicateEdits(edits)
 }
 
@@ -286,9 +317,235 @@ func fixCall(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset f
 		if ee := fixGetToField(pf, node, r, byteOffset, stmtOf); ee != nil {
 			return ee
 		}
+		if ee := fixReadFileToParseFS(pf, node, r, byteOffset); ee != nil {
+			return ee
+		}
 		return fixSignatureChange(node, r, byteOffset)
+	case kindMovedToExtension:
+		return fixMoveToExtension(pf, node, r, byteOffset)
 	}
 	return nil
+}
+
+// fixMoveToExtension rewrites package-qualified references where a symbol
+// moved from the core library to an extension module. The rule's v4 field
+// holds the new cross-package target in "pkg.Name" form (e.g. the jwa
+// extension rules carry v4 "es256k.ES256K"). The rewrite replaces both
+// sides of the selector at once and relies on ensureExtensionImport to
+// inject the extension module's import path in the collectEdits post-pass.
+//
+// Applies only to call-site selectors. Bare type/value references (no
+// CallExpr) are handled separately by fixMoveToExtensionSelectorExpr so
+// the fix runs whether the old symbol was called or referenced.
+func fixMoveToExtension(_ *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int) []Edit {
+	newPkg, newName := parseExtensionTarget(r.ToVersion())
+	if newPkg == "" {
+		return nil
+	}
+	sel, ok := node.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return nil
+	}
+	xIdent, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	xStart := byteOffset(xIdent.Pos())
+	xEnd := byteOffset(xIdent.End())
+	nameStart := byteOffset(sel.Sel.Pos())
+	nameEnd := byteOffset(sel.Sel.End())
+	edits := []Edit{{Start: xStart, End: xEnd, New: newPkg}}
+	if newName != sel.Sel.Name {
+		edits = append(edits, Edit{Start: nameStart, End: nameEnd, New: newName})
+	}
+	return edits
+}
+
+// fixMoveToExtensionSelectorExpr handles the bare selector case — a
+// reference that is not the Fun of a CallExpr, e.g. `var _ = jwa.ES256K`
+// (value) or `var _ jwa.SomeType` (type). Called from the SelectorExpr
+// branch of collectEdits.
+func fixMoveToExtensionSelectorExpr(node *ast.SelectorExpr, r *CompiledRule, byteOffset func(token.Pos) int) []Edit {
+	if r.Kind != kindMovedToExtension {
+		return nil
+	}
+	newPkg, newName := parseExtensionTarget(r.ToVersion())
+	if newPkg == "" {
+		return nil
+	}
+	xIdent, ok := node.X.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	xStart := byteOffset(xIdent.Pos())
+	xEnd := byteOffset(xIdent.End())
+	nameStart := byteOffset(node.Sel.Pos())
+	nameEnd := byteOffset(node.Sel.End())
+	edits := []Edit{{Start: xStart, End: xEnd, New: newPkg}}
+	if newName != node.Sel.Name {
+		edits = append(edits, Edit{Start: nameStart, End: nameEnd, New: newName})
+	}
+	return edits
+}
+
+// parseExtensionTarget splits a v4 field of the form "pkg.Name" into
+// its two parts, returning "", "" if the input is not in that shape or
+// either half is not a valid Go identifier. Guards against bogus yaml
+// values like "Token.Claims() iter.Seq2[string, any]".
+func parseExtensionTarget(v4 string) (pkg, name string) {
+	dot := strings.Index(v4, ".")
+	if dot <= 0 || dot == len(v4)-1 {
+		return "", ""
+	}
+	pkg = v4[:dot]
+	name = v4[dot+1:]
+	if !isGoIdent(pkg) || !isGoIdent(name) {
+		return "", ""
+	}
+	return pkg, name
+}
+
+// fixReadFileToParseFS rewrites jwt.ReadFile("dir/file") →
+// jwt.ParseFS(os.DirFS("dir"), "file"), preserving any trailing options.
+// Non-literal path arguments return []Edit{} (match claimed but skipped)
+// so the caller does not fall through to a name-only rename that would
+// leave the call uncallable in v4.
+//
+// An "os" import is injected in collectEdits's post-pass if any of these
+// rewrites were emitted and the file doesn't already import "os".
+func fixReadFileToParseFS(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int) []Edit {
+	if r.ID != "readfile-to-parsefs" && r.ID != "readfile-to-parsefs-v2" {
+		return nil
+	}
+	sel, ok := node.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return nil
+	}
+	if len(node.Args) == 0 {
+		return []Edit{}
+	}
+	lit, ok := node.Args[0].(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return []Edit{}
+	}
+	raw, err := strconv.Unquote(lit.Value)
+	if err != nil {
+		return []Edit{}
+	}
+
+	dir, file := path.Split(raw)
+	switch dir {
+	case "":
+		dir = "."
+	case "/":
+		// leave as "/"
+	default:
+		dir = strings.TrimSuffix(dir, "/")
+	}
+
+	newHead := fmt.Sprintf("ParseFS(os.DirFS(%q), %q", dir, file)
+	start := byteOffset(sel.Sel.Pos())
+	end := byteOffset(node.Args[0].End())
+	return []Edit{{Start: start, End: end, New: newHead}}
+}
+
+// ensureOsImport appends a single import edit inserting "os" into the
+// file's first import group, if any readfile-to-parsefs rewrite was
+// emitted and "os" is not already imported. No-op otherwise.
+func ensureOsImport(pf *ParsedGoFile, edits []taggedEdit, byteOffset func(token.Pos) int) []taggedEdit {
+	var hasReadFileFix bool
+	var triggerRuleID string
+	for _, e := range edits {
+		if e.ruleID == "readfile-to-parsefs" || e.ruleID == "readfile-to-parsefs-v2" {
+			hasReadFileFix = true
+			triggerRuleID = e.ruleID
+			break
+		}
+	}
+	if !hasReadFileFix {
+		return edits
+	}
+	return appendImportEdit(pf, edits, byteOffset, "", "os", triggerRuleID)
+}
+
+// ensureExtensionImports injects one `pkg "path"` import for each distinct
+// moved_to_extension rule whose edits were emitted and whose target
+// package is not already imported. Called from the collectEdits post-pass.
+func ensureExtensionImports(pf *ParsedGoFile, edits []taggedEdit, rules []CompiledRule, byteOffset func(token.Pos) int) []taggedEdit {
+	if len(edits) == 0 {
+		return edits
+	}
+	ruleByID := make(map[string]*CompiledRule, len(rules))
+	for i := range rules {
+		ruleByID[rules[i].ID] = &rules[i]
+	}
+	seen := make(map[string]struct{})
+	for _, e := range edits {
+		r, ok := ruleByID[e.ruleID]
+		if !ok || r.Kind != kindMovedToExtension || r.ExtensionModule == "" {
+			continue
+		}
+		newPkg, _ := parseExtensionTarget(r.ToVersion())
+		if newPkg == "" {
+			continue
+		}
+		key := r.ExtensionModule + "\x00" + newPkg
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		if _, already := importedAs(pf, r.ExtensionModule); already {
+			continue
+		}
+		edits = appendImportEdit(pf, edits, byteOffset, newPkg, r.ExtensionModule, e.ruleID)
+	}
+	return edits
+}
+
+// appendImportEdit injects one import spec `alias "path"` (alias may be
+// empty) into the file's first import group. No-op if the file has no
+// import block at all. Multiple calls with the same target produce
+// multiple edits; deduplicateEdits collapses identical ones.
+func appendImportEdit(pf *ParsedGoFile, edits []taggedEdit, byteOffset func(token.Pos) int, alias, importPath, ruleID string) []taggedEdit {
+	if len(pf.ASTFile.Imports) == 0 {
+		return edits
+	}
+	first := pf.ASTFile.Imports[0]
+	pos := byteOffset(first.Pos())
+	lineStart := pos
+	for lineStart > 0 && pf.Src[lineStart-1] != '\n' {
+		lineStart--
+	}
+	var spec string
+	if alias != "" && alias != path.Base(importPath) {
+		spec = fmt.Sprintf("\t%s %q\n", alias, importPath)
+	} else {
+		spec = fmt.Sprintf("\t%q\n", importPath)
+	}
+	// line=0: import-injection edits are not tied to a single Check finding.
+	return append(edits, taggedEdit{
+		Edit:   Edit{Start: lineStart, End: lineStart, New: spec},
+		ruleID: ruleID,
+	})
+}
+
+// importedAs reports whether importPath is present in the file's imports
+// and, if so, the local name used to refer to it.
+func importedAs(pf *ParsedGoFile, importPath string) (string, bool) {
+	for _, imp := range pf.ASTFile.Imports {
+		p, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			continue
+		}
+		if p != importPath {
+			continue
+		}
+		if imp.Name != nil {
+			return imp.Name.Name, true
+		}
+		return goPkgName(importPath), true
+	}
+	return "", false
 }
 
 // canFixWithTypes returns true if a non-mechanical rule can be fixed when
@@ -532,13 +789,33 @@ func fixDeleteStatement(node ast.Node, byteOffset func(token.Pos) int, stmtOf ma
 	return []Edit{{Start: start, End: end, New: ""}}
 }
 
+// isGoIdent reports whether s is a valid Go identifier — starts with a
+// letter or underscore, followed by letters, digits, or underscores. Used
+// to reject rename targets that are actually prose (e.g. a rule whose v4
+// field is "func(T) (Key, error)" — a description, not a symbol).
+func isGoIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			continue
+		}
+		if i > 0 && r >= '0' && r <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // fixSelectorExpr renames a selector expression (e.g. jws.Signer2 → jws.Signer).
 func fixSelectorExpr(_ *ParsedGoFile, node *ast.SelectorExpr, r *CompiledRule, byteOffset func(token.Pos) int) *Edit {
 	newName := r.ToVersion()
 	if newName == "" {
 		newName = r.Replacement
 	}
-	if newName == "" {
+	if !isGoIdent(newName) {
 		return nil
 	}
 	start := byteOffset(node.Sel.Pos())
@@ -552,7 +829,7 @@ func fixIdent(_ *ParsedGoFile, node *ast.Ident, r *CompiledRule, byteOffset func
 	if newName == "" {
 		newName = r.Replacement
 	}
-	if newName == "" {
+	if !isGoIdent(newName) {
 		return nil
 	}
 	start := byteOffset(node.Pos())

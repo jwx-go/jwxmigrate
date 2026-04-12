@@ -1,0 +1,3 @@
+migration: v3-to-v4
+rule_id: dep-option-v2-to-v3
+skip_fix: true

@@ -1,0 +1,3 @@
+main.go:10: [jwk-certificatechain-removed-v2] (manual) jwk.CertificateChain
+
+total=1 mechanical=0 manual=1

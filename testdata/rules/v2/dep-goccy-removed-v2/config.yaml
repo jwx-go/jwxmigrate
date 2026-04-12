@@ -1,0 +1,3 @@
+migration: v2-to-v4
+rule_id: dep-goccy-removed-v2
+skip_fix: true

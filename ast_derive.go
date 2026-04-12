@@ -187,21 +187,22 @@ func deriveRemovedOrMoved(r *Rule) []ASTMatcher {
 
 	for _, name := range names {
 		if r.Package != "" && r.Package != packageAll {
-			if isCall {
-				matchers = append(matchers, ASTMatcher{
-					Kind:    MatchCallExpr,
-					PkgName: r.Package,
-					Name:    name,
-				})
-			}
-			// Always add a selector matcher for type/value references.
-			matchers = append(matchers, ASTMatcher{
-				Kind:    MatchSelectorExpr,
-				PkgName: r.Package,
-				Name:    name,
-			})
+			// Emit both a CallExpr and a SelectorExpr matcher. The scanner
+			// skips SelectorExpr nodes that are the Fun of a CallExpr (to
+			// avoid double-counting), so for a name used as a call we need
+			// the CallExpr matcher; for the same name used as a type or
+			// value reference we need the SelectorExpr matcher. Rule
+			// authors can't reliably predict which form user code uses, so
+			// always derive both. Duplicate findings on the same line are
+			// deduped by the scanner.
+			matchers = append(matchers,
+				ASTMatcher{Kind: MatchCallExpr, PkgName: r.Package, Name: name},
+				ASTMatcher{Kind: MatchSelectorExpr, PkgName: r.Package, Name: name},
+			)
 		} else {
-			// package == "all"
+			// package == "all": keep isCall gated because MatchMethodCall
+			// has no package filter and can false-positive on unrelated
+			// method names if enabled blindly.
 			if isCall {
 				matchers = append(matchers, ASTMatcher{
 					Kind: MatchMethodCall,
@@ -306,11 +307,14 @@ func deriveTypeChange(r *Rule) []ASTMatcher {
 	var matchers []ASTMatcher
 	for _, name := range names {
 		if r.Package != "" && r.Package != packageAll {
-			matchers = append(matchers, ASTMatcher{
-				Kind:    MatchSelectorExpr,
-				PkgName: r.Package,
-				Name:    name,
-			})
+			// Emit both CallExpr and SelectorExpr so names used as call
+			// funs (e.g. jwk.KeyImportFunc(fn)) fire as well as type
+			// references (e.g. var _ jwk.KeyImporter = ...). The scanner
+			// dedupes findings per (ruleID, line).
+			matchers = append(matchers,
+				ASTMatcher{Kind: MatchCallExpr, PkgName: r.Package, Name: name},
+				ASTMatcher{Kind: MatchSelectorExpr, PkgName: r.Package, Name: name},
+			)
 		} else {
 			matchers = append(matchers, ASTMatcher{
 				Kind: MatchIdent,

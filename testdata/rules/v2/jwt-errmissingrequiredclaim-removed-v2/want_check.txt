@@ -1,0 +1,3 @@
+main.go:10: [jwt-errmissingrequiredclaim-removed-v2] (manual) jwt.ErrMissingRequiredClaim
+
+total=1 mechanical=0 manual=1

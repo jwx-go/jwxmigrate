@@ -1,0 +1,3 @@
+main.go:8: [jws-withverify-removed-v2] (manual) jws.WithVerify(nil, key)
+
+total=1 mechanical=0 manual=1

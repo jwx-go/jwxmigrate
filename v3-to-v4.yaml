@@ -535,9 +535,8 @@ rules:
   - id: jwk-keyimporter-type-removed
     kind: type_change
     package: jwk
-    mechanical: true
-    v3: "KeyImporter interface"
-    v4: "func(T) (Key, error)"
+    mechanical: false
+    v3: "KeyImporter"
     search_patterns:
       - 'KeyImporter\b'
       - 'KeyImportFunc\('
@@ -545,8 +544,11 @@ rules:
       - 'undefined: jwk.KeyImporter'
       - 'undefined: jwk.KeyImportFunc'
     note: >
-      The KeyImporter and KeyImportFunc types are replaced by plain generic functions.
-      See RegisterKeyImporter rule above.
+      The KeyImporter interface and the KeyImportFunc constructor are both
+      removed. There is no 1:1 type replacement: in v4 the importer is just
+      a plain generic function `func(T) (jwk.Key, error)` passed directly to
+      jwk.RegisterKeyImporter[T]. Migrate call sites manually; see the
+      jwk-register-key-importer rule.
 
   - id: jwk-registerprobefield-generic
     kind: signature_change
@@ -803,6 +805,7 @@ rules:
     mechanical: true
     v3: "jws.SplitCompact"
     v4: "jwsbb.SplitCompact"
+    extension_module: "github.com/lestrrat-go/jwx/v4/jws/jwsbb"
     search_patterns:
       - 'jws\.SplitCompact\('
       - 'jws\.SplitCompactString\('

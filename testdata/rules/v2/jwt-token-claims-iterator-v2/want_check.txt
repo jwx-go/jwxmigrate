@@ -1,0 +1,3 @@
+main.go:14: [jwt-token-claims-iterator-v2] (manual) token.Keys()
+
+total=1 mechanical=0 manual=1

@@ -379,11 +379,28 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 			}
 			funcName := sel.Sel.Name
 
-			// Package-qualified calls: pkg.Func(...)
 			if ident, ok := sel.X.(*ast.Ident); ok {
+				// Package-qualified calls: pkg.Func(...)
 				for _, rm := range callMatchers {
-					if rm.matcher.MatchesName(funcName) && matchesPkg(ident.Name, rm.matcher.PkgName) {
+					if !rm.matcher.MatchesName(funcName) {
+						continue
+					}
+					if matchesPkg(ident.Name, rm.matcher.PkgName) {
 						addFinding(rm.rule, node, "CallExpr")
+						continue
+					}
+					// Method-on-local-var fallback: when the receiver is a
+					// local variable whose declared type is from a v3
+					// package (e.g. func iterate(set jwk.Set) { set.Len() }),
+					// treat set.Len() as a call on the jwk package for
+					// matching purposes. This lets rules like jwk-set-iterator
+					// fire on method calls without needing type-checked
+					// loading — the parser-populated Obj chain is enough for
+					// func params and explicitly-typed var declarations.
+					if localPkg := localIdentDeclPackage(ident); localPkg != "" && localPkg == rm.matcher.PkgName {
+						if _, imported := pf.V3Imports[localPkg]; imported {
+							addFinding(rm.rule, node, "CallExpr")
+						}
 					}
 				}
 			}
@@ -437,6 +454,56 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 	}
 
 	return findings
+}
+
+// localIdentDeclPackage returns the local package name of the type an
+// identifier was declared as, using the parser-populated ast.Ident.Obj
+// chain. Handles function parameters and `var x T` declarations without
+// needing type-checked loading. Returns "" when the type is unknown,
+// from the built-in scope, or not package-qualified.
+//
+// Supported forms:
+//
+//	func f(x jwk.Set)          → "jwk"
+//	func f(x *jwk.Set)         → "jwk"
+//	var x jwk.Set              → "jwk"
+//	var x []jwk.Set            → "jwk"
+//
+// Unsupported (return ""):
+//
+//	x := jwk.NewSet()          (no explicit type)
+//	f(x SomeLocalType)         (type is local, not package-qualified)
+//	x.Field (struct field)
+func localIdentDeclPackage(ident *ast.Ident) string {
+	if ident.Obj == nil {
+		return ""
+	}
+	var typeExpr ast.Expr
+	switch d := ident.Obj.Decl.(type) {
+	case *ast.Field:
+		typeExpr = d.Type
+	case *ast.ValueSpec:
+		typeExpr = d.Type
+	default:
+		return ""
+	}
+	for typeExpr != nil {
+		switch t := typeExpr.(type) {
+		case *ast.StarExpr:
+			typeExpr = t.X
+		case *ast.ArrayType:
+			typeExpr = t.Elt
+		case *ast.SelectorExpr:
+			pkgIdent, ok := t.X.(*ast.Ident)
+			if !ok {
+				return ""
+			}
+			return pkgIdent.Name
+		default:
+			return ""
+		}
+	}
+	return ""
 }
 
 // isV3Type checks whether the type of an expression belongs to a v3 jwx package.
