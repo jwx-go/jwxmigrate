@@ -110,7 +110,7 @@ func runFix(target string, rules []CompiledRule) error {
 		}
 		if len(result.Applied) > 0 {
 			totalFixed += len(result.Applied)
-			fmt.Fprintf(os.Stdout, "%s: applied %s\n", result.File, strings.Join(result.Applied, ", "))
+			_, _ = fmt.Fprintf(os.Stdout, "%s: applied %s\n", result.File, strings.Join(result.Applied, ", "))
 		}
 		allRemaining = append(allRemaining, result.Remaining...)
 	}
@@ -118,14 +118,14 @@ func runFix(target string, rules []CompiledRule) error {
 	if totalFixed == 0 {
 		_, _ = fmt.Fprintln(os.Stdout, "no mechanical fixes to apply")
 	} else {
-		fmt.Fprintf(os.Stdout, "\n%d rule(s) applied\n", totalFixed)
+		_, _ = fmt.Fprintf(os.Stdout, "\n%d rule(s) applied\n", totalFixed)
 	}
 
 	if len(allRemaining) > 0 {
-		fmt.Fprintf(os.Stdout, "\nRemaining issues (%d):\n\n", len(allRemaining))
+		_, _ = fmt.Fprintf(os.Stdout, "\nRemaining issues (%d):\n\n", len(allRemaining))
 		for _, f := range allRemaining {
-			fmt.Fprintf(os.Stdout, "  %s:%d:\n", f.File, f.Line)
-			fmt.Fprintf(os.Stdout, "    %s\n\n", f.Note)
+			_, _ = fmt.Fprintf(os.Stdout, "  %s:%d:\n", f.File, f.Line)
+			_, _ = fmt.Fprintf(os.Stdout, "    %s\n\n", f.Note)
 		}
 		os.Exit(1)
 	}
