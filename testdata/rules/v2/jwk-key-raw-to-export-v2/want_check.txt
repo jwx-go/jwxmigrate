@@ -1,0 +1,3 @@
+main.go:15: [jwk-key-raw-to-export-v2] (manual) key.Raw(&out)
+
+total=1 mechanical=0 manual=1

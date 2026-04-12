@@ -1,0 +1,3 @@
+.PHONY: test-asm
+test-asm:
+	go test -tags=jwx_asmbase64 ./...

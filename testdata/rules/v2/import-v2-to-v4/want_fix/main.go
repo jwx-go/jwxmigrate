@@ -1,0 +1,7 @@
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+var _ = jwt.SubjectKey

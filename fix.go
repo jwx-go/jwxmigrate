@@ -414,7 +414,7 @@ func parseExtensionTarget(v4 string) (pkg, name string) {
 // An "os" import is injected in collectEdits's post-pass if any of these
 // rewrites were emitted and the file doesn't already import "os".
 func fixReadFileToParseFS(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int) []Edit {
-	if r.ID != "readfile-to-parsefs" {
+	if r.ID != "readfile-to-parsefs" && r.ID != "readfile-to-parsefs-v2" {
 		return nil
 	}
 	sel, ok := node.Fun.(*ast.SelectorExpr)
@@ -454,16 +454,18 @@ func fixReadFileToParseFS(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule,
 // emitted and "os" is not already imported. No-op otherwise.
 func ensureOsImport(pf *ParsedGoFile, edits []taggedEdit, byteOffset func(token.Pos) int) []taggedEdit {
 	var hasReadFileFix bool
+	var triggerRuleID string
 	for _, e := range edits {
-		if e.ruleID == "readfile-to-parsefs" {
+		if e.ruleID == "readfile-to-parsefs" || e.ruleID == "readfile-to-parsefs-v2" {
 			hasReadFileFix = true
+			triggerRuleID = e.ruleID
 			break
 		}
 	}
 	if !hasReadFileFix {
 		return edits
 	}
-	return appendImportEdit(pf, edits, byteOffset, "", "os", "readfile-to-parsefs")
+	return appendImportEdit(pf, edits, byteOffset, "", "os", triggerRuleID)
 }
 
 // ensureExtensionImports injects one `pkg "path"` import for each distinct

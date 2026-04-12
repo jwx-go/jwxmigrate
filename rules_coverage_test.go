@@ -66,45 +66,20 @@ var ruleCoverageExemptions = map[string]map[string]bool{
 	"v2-to-v4": {},
 }
 
-// v2ToV4Exemptions lists every v2-to-v4 rule ID that is temporarily exempt.
-// Shrink this list as v2 fixtures are added.
+// v2ToV4Exemptions lists v2-to-v4 rule IDs that intentionally lack a
+// per-rule fixture dir. Grouped by reason; shrink only by making the
+// rules fireable or by replacing an edge fixture with per-rule coverage.
 var v2ToV4Exemptions = []string{
-	"import-v2-to-v4",
-	"build-go-version-v2",
-	"build-tag-goccy-v2",
-	"build-tag-asmbase64-v2",
-	"build-tag-es256k-v2",
-	"build-tag-secp256k1-pem-v2",
-	"rename-decodersettings-to-settings-v2",
-	"get-to-field-v2",
-	"accessor-return-type-v2",
-	"register-custom-field-generic-v2",
-	"readfile-to-parsefs-v2",
-	"remove-readfileoption-v2",
-	"remove-withfs-v2",
-	"jwa-es256k-extension-v2",
-	"jwa-secp256k1-extension-v2",
-	"jwa-ed448-extension-v2",
-	"jwk-fromraw-to-import-v2",
-	"jwk-key-raw-to-export-v2",
-	"jwk-import-generic-v2",
-	"jwk-parsekey-generic-v2",
-	"jwk-register-key-importer-v2",
-	"jwk-cache-removed-v2",
-	"jwk-autorefresh-removed-v2",
+	// jwk option-type rules: realistic call-site coverage lives in
+	// testdata/edge/jwk-cache-options-v2 which exercises a v2
+	// NewCache plus each Option type in a single scenario. Per-rule
+	// fixtures would be trivial name-match stubs that test nothing.
 	"jwk-cacheoption-removed-v2",
 	"jwk-resourceoption-removed-v2",
 	"jwk-registeroption-removed-v2",
-	"jwk-set-iterator-v2",
-	"jwk-keyimporter-type-removed-v2",
-	"jwk-certificatechain-removed-v2",
-	"jwk-x25519-removed-v2",
-	"jwk-setglobalfetcher-removed-v2",
-	"jws-signer2-to-signer-v2",
-	"jws-verifier2-to-verifier-v2",
-	"jws-withverify-removed-v2",
-	"jws-verifyauto-removed-v2",
-	"jws-withpayloadsigner-removed-v2",
+	// jws legacy signer/verifier factory+adapter subsystem: exercised
+	// in context by testdata/edge/jws-legacy-signers-v2. The seven
+	// rules below fire there on the realistic registration chain.
 	"jws-signerfactory-removed-v2",
 	"jws-signerfactoryfn-removed-v2",
 	"jws-signeradapter-removed-v2",
@@ -112,34 +87,12 @@ var v2ToV4Exemptions = []string{
 	"jws-verifierfactoryfn-removed-v2",
 	"jws-verifideradapter-removed-v2",
 	"jws-withlegacysigners-removed-v2",
-	"jws-isxxxerror-removed-v2",
-	"jws-withkey-early-validation-v2",
-	"jwe-decryptencryptoption-renamed-v2",
-	"jwe-message-decrypt-removed-v2",
-	"jwe-json-removed-v2",
-	"jwe-withpostparser-removed-v2",
-	"jwe-remove-legacy-header-merging-v2",
-	"jwe-isxxxerror-removed-v2",
-	"jwt-withverify-false-to-parseinsecure-v2",
-	"jwt-withdecrypt-removed-v2",
-	"jwt-withjweheaders-removed-v2",
-	"jwt-withheaders-removed-v2",
-	"jwt-withjwsheaders-removed-v2",
-	"jwt-usedefault-removed-v2",
-	"jwt-inferalgorithmfromkey-removed-v2",
-	"jwt-withkeysetprovider-removed-v2",
-	"jwt-errinvalidjwt-renamed-v2",
-	"jwt-errmissingrequiredclaim-removed-v2",
-	"jwt-token-claims-iterator-v2",
-	"jwt-time-validation-behavioral-v2",
-	"jwt-field-presence-behavioral-v2",
-	"jwk-cache-extension-v2",
-	"asmbase64-extension-v2",
-	"dep-pkg-errors-removed-v2",
-	"dep-blackmagic-removed-v2",
-	"dep-goccy-removed-v2",
-	"dep-segmentio-removed-v2",
-	"dep-option-v1-to-v3",
+	// Unfireable-by-design: no search_patterns, or patterns that
+	// can't match real Go code. Kept exempt until the rules are
+	// reworked to have actionable triggers.
+	"jwt-time-validation-behavioral-v2", // behavioral, no patterns
+	"jwt-field-presence-behavioral-v2",  // behavioral, no patterns
+	"asmbase64-extension-v2",            // bare "asmbase64" pattern never fires on Go
 }
 
 func init() {

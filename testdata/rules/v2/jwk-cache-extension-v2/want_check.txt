@@ -1,0 +1,3 @@
+main.go:10: [jwk-cache-extension-v2] (manual) jwk.NewCache(ctx)
+
+total=1 mechanical=0 manual=1

@@ -1,0 +1,3 @@
+main.go:9: [jwt-usedefault-removed-v2] (manual) jwt.UseDefault(true)
+
+total=1 mechanical=0 manual=1
