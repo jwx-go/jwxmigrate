@@ -47,20 +47,29 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 
 	edits := collectEdits(pf, rules)
 
-	// Track which rules were fixed so we can exclude them from remaining.
-	fixedRules := make(map[string]struct{})
+	// Correlate edits back to findings by (ruleID, line) so the remaining
+	// list reports every finding that did NOT receive an edit — mechanical
+	// or not. This catches rules that matched in Check but whose fixer
+	// couldn't emit an edit (e.g. kindRemoved calls nested inside a
+	// composite literal with no statement parent). Previously those rules
+	// were silently dropped from the remaining list because the old logic
+	// blanket-skipped everything marked Mechanical.
+	type fixKey struct {
+		ruleID string
+		line   int
+	}
+	fixedAt := make(map[fixKey]struct{}, len(edits))
 	for _, e := range edits {
-		fixedRules[e.ruleID] = struct{}{}
+		if e.line == 0 {
+			continue // side-effect edit (import injection); no finding
+		}
+		fixedAt[fixKey{ruleID: e.ruleID, line: e.line}] = struct{}{}
 	}
 
-	// Collect findings and filter out those that are mechanical or were fixed.
 	allFindings := scanGoFileAST(pf, rules, CheckOptions{})
 	var unfixed []Finding
 	for _, f := range allFindings {
-		if f.Mechanical {
-			continue
-		}
-		if _, fixed := fixedRules[f.RuleID]; fixed {
+		if _, fixed := fixedAt[fixKey{ruleID: f.RuleID, line: f.Line}]; fixed {
 			continue
 		}
 		unfixed = append(unfixed, f)
@@ -96,11 +105,20 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 	return &FixResult{File: filePath, Applied: ids, Remaining: unfixed}, nil
 }
 
-// taggedEdit is an Edit with its originating rule ID for reporting.
+// taggedEdit is an Edit with its originating rule ID and the source line
+// of the matched node. The line is used to correlate edits back to Check
+// findings so FixFile can report which findings remain unfixed at the
+// per-location level (not per-rule).
+//
+// Side-effect edits that are not tied to a specific finding — e.g. the
+// import-injection edits emitted by ensureOsImport / ensureExtensionImports
+// — use line=0. Zero is never a real Check-finding line, so it can't
+// falsely mark any finding as fixed.
 type taggedEdit struct {
 	Edit
 
 	ruleID string
+	line   int
 }
 
 // collectEdits walks the AST and collects all applicable mechanical edits.
@@ -123,6 +141,9 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 
 	byteOffset := func(pos token.Pos) int {
 		return int(pos) - base
+	}
+	lineOf := func(n ast.Node) int {
+		return pf.FileSet.Position(n.Pos()).Line
 	}
 
 	// Pre-index: map ast.Node → parent statement for statement deletion.
@@ -167,7 +188,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					}
 					e := fixImportChange(pf, node, r, byteOffset)
 					if e != nil {
-						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID})
+						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID, line: lineOf(node)})
 					}
 
 				case *ast.CallExpr:
@@ -202,7 +223,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 
 					ee := fixCall(pf, node, r, byteOffset, stmtOf)
 					for _, e := range ee {
-						edits = append(edits, taggedEdit{Edit: e, ruleID: r.ID})
+						edits = append(edits, taggedEdit{Edit: e, ruleID: r.ID, line: lineOf(node)})
 					}
 
 				case *ast.SelectorExpr:
@@ -221,13 +242,13 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					}
 					if r.Kind == kindMovedToExtension {
 						for _, e := range fixMoveToExtensionSelectorExpr(node, r, byteOffset) {
-							edits = append(edits, taggedEdit{Edit: e, ruleID: r.ID})
+							edits = append(edits, taggedEdit{Edit: e, ruleID: r.ID, line: lineOf(node)})
 						}
 						return true
 					}
 					e := fixSelectorExpr(pf, node, r, byteOffset)
 					if e != nil {
-						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID})
+						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID, line: lineOf(node)})
 					}
 
 				case *ast.Ident:
@@ -247,7 +268,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					}
 					e := fixIdent(pf, node, r, byteOffset)
 					if e != nil {
-						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID})
+						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID, line: lineOf(node)})
 					}
 				}
 				return true
@@ -493,14 +514,15 @@ func appendImportEdit(pf *ParsedGoFile, edits []taggedEdit, byteOffset func(toke
 	for lineStart > 0 && pf.Src[lineStart-1] != '\n' {
 		lineStart--
 	}
-	var line string
+	var spec string
 	if alias != "" && alias != path.Base(importPath) {
-		line = fmt.Sprintf("\t%s %q\n", alias, importPath)
+		spec = fmt.Sprintf("\t%s %q\n", alias, importPath)
 	} else {
-		line = fmt.Sprintf("\t%q\n", importPath)
+		spec = fmt.Sprintf("\t%q\n", importPath)
 	}
+	// line=0: import-injection edits are not tied to a single Check finding.
 	return append(edits, taggedEdit{
-		Edit:   Edit{Start: lineStart, End: lineStart, New: line},
+		Edit:   Edit{Start: lineStart, End: lineStart, New: spec},
 		ruleID: ruleID,
 	})
 }
