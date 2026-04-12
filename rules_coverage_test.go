@@ -44,22 +44,23 @@ var ruleCoverageExemptions = map[string]map[string]bool{
 		"jwk-withmaxinterval-removed":          true,
 		// jwk-keyimporter-type-removed is covered in context by the
 		// jwk-register-key-importer fixture, which uses KeyImportFunc.
-		"jwk-keyimporter-type-removed":         true,
-		"jws-verifier2-to-verifier":            true,
-		"jws-register-signer":                  true,
-		"jws-register-verifier":                true,
-		"jws-signerfactory-removed":            true,
+		"jwk-keyimporter-type-removed": true,
+		// jws legacy signer/verifier factory+adapter subsystem: exercised
+		// in context by testdata/edge/jws-legacy-signers. The five rules
+		// below fire there today on the realistic call chain.
+		"jws-register-signer":           true,
+		"jws-register-verifier":         true,
+		"jws-signerfactory-removed":     true,
+		"jws-verifierfactory-removed":   true,
+		"jws-withlegacysigners-removed": true,
+		// The four below are *present* in the same fixture but are NOT
+		// matched today — their search patterns omit `\(` and ast_derive
+		// emits a SelectorExpr-only matcher, so the scanner silently skips
+		// calls. See the KNOWN SCANNER GAP note in the fixture's input.
 		"jws-signerfactoryfn-removed":          true,
 		"jws-signeradapter-removed":            true,
-		"jws-verifierfactory-removed":          true,
 		"jws-verifierfactoryfn-removed":        true,
 		"jws-verifideradapter-removed":         true,
-		"jws-withlegacysigners-removed":        true,
-		"jws-signerfor-return-type":            true,
-		"jws-verifierfor-return-type":          true,
-		"jws-withkey-early-validation":         true,
-		"jws-splitcompact-moved":               true,
-		"jws-legacy-package-removed":           true,
 		"jwe-remove-legacy-header-merging":     true,
 		"jwa-es256k-extension":                 true,
 		"jwa-secp256k1-extension":              true,

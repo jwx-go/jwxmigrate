@@ -1,0 +1,11 @@
+main.go:4: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jwa"
+main.go:5: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jws"
+main.go:46: [jws-signerfactory-removed] (mechanical) jws.SignerFactory
+main.go:46: [jws-signer2-to-signer] (mechanical) jws.Signer2
+main.go:49: [jws-register-signer] (mechanical) jws.RegisterSigner(jwa.RS256(), factory)
+main.go:51: [jws-verifierfactory-removed] (mechanical) jws.VerifierFactory
+main.go:51: [jws-verifier2-to-verifier] (mechanical) jws.Verifier2
+main.go:54: [jws-register-verifier] (mechanical) jws.RegisterVerifier(jwa.RS256(), vf)
+main.go:58: [jws-withlegacysigners-removed] (mechanical) jws.WithLegacySigners()
+
+total=9 mechanical=9 manual=0

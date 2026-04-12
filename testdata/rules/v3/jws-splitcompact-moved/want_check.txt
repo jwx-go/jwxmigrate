@@ -1,0 +1,3 @@
+main.go:8: [jws-splitcompact-moved] (mechanical) jws.SplitCompact(buf)
+
+total=1 mechanical=1 manual=0
