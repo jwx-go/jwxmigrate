@@ -121,38 +121,25 @@ rules:
   # Root Package (jwx)
   # ============================================================
 
-  - id: remove-decodersettings
-    kind: removed
+  - id: rename-decodersettings-to-settings
+    kind: rename
     package: jwx
     mechanical: true
     v3: DecoderSettings
+    v4: Settings
     search_patterns:
-      - 'DecoderSettings\('
+      - 'jwx\.DecoderSettings\('
     compiler_hints:
       - 'undefined: jwx.DecoderSettings'
-      - 'undefined: DecoderSettings'
     note: >
-      jwx.DecoderSettings() is removed entirely. v4 uses encoding/json/v2 which does
-      not need manual decoder configuration. Remove all calls to DecoderSettings().
-
-  - id: remove-withusenumber
-    kind: removed
-    package: jwx
-    mechanical: true
-    v3: WithUseNumber
-    search_patterns:
-      - 'WithUseNumber\('
-    compiler_hints:
-      - 'undefined: jwx.WithUseNumber'
-      - 'undefined: WithUseNumber'
-    note: >
-      jwx.WithUseNumber() is removed. JSON numbers are handled natively by encoding/json/v2.
-      If you relied on json.Number type, use float64 or implement custom unmarshaling.
+      jwx.DecoderSettings() is renamed to jwx.Settings(). The function signature
+      is unchanged — it still accepts global options like jwx.WithUseNumber(),
+      which continues to exist. This is a straightforward rename.
     example:
       before: |
         jwx.DecoderSettings(jwx.WithUseNumber(true))
       after: |
-        // Remove entirely. json/v2 handles numbers natively.
+        jwx.Settings(jwx.WithUseNumber(true))
 
   # ============================================================
   # All Packages — Interface Method Changes

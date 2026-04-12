@@ -119,32 +119,20 @@ rules:
   # Root Package (jwx)
   # ============================================================
 
-  - id: remove-decodersettings-v2
-    kind: removed
+  - id: rename-decodersettings-to-settings-v2
+    kind: rename
     package: jwx
     mechanical: true
     v2: DecoderSettings
+    v4: Settings
     search_patterns:
-      - 'DecoderSettings\('
+      - 'jwx\.DecoderSettings\('
     compiler_hints:
       - 'undefined: jwx.DecoderSettings'
-      - 'undefined: DecoderSettings'
     note: >
-      jwx.DecoderSettings() is removed. v4 uses encoding/json/v2 which does
-      not need manual decoder configuration. Remove all calls.
-
-  - id: remove-withusenumber-v2
-    kind: removed
-    package: jwx
-    mechanical: true
-    v2: WithUseNumber
-    search_patterns:
-      - 'WithUseNumber\('
-    compiler_hints:
-      - 'undefined: jwx.WithUseNumber'
-    note: >
-      jwx.WithUseNumber() is removed. JSON numbers are handled natively
-      by encoding/json/v2.
+      jwx.DecoderSettings() is renamed to jwx.Settings(). The function
+      signature is unchanged — it still accepts global options like
+      jwx.WithUseNumber(), which continues to exist. Straightforward rename.
 
   # ============================================================
   # All Packages — Interface Method Changes

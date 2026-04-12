@@ -34,7 +34,7 @@ func example() {
 	// Cache usage (should trigger jwk-cache-removed)
 	cache, _ := jwk.NewCache(ctx, client)
 
-	// DecoderSettings (should trigger remove-decodersettings)
+	// DecoderSettings (should trigger rename-decodersettings-to-settings)
 	jwx.DecoderSettings(jwx.WithUseNumber(true))
 
 	_ = fmt.Sprintf("%v %v %v %v %v %v", tok, set, key, parsed, s, cache)
