@@ -39,20 +39,15 @@ var ruleCoverageExemptions = map[string]map[string]bool{
 		// jws legacy signer/verifier factory+adapter subsystem: fully
 		// exercised in context by testdata/edge/jws-legacy-signers. All
 		// nine rules fire on the realistic registration chain there.
-		"jws-register-signer":              true,
-		"jws-register-verifier":            true,
-		"jws-signerfactory-removed":        true,
-		"jws-signerfactoryfn-removed":      true,
-		"jws-signeradapter-removed":        true,
-		"jws-verifierfactory-removed":      true,
-		"jws-verifierfactoryfn-removed":    true,
-		"jws-verifideradapter-removed":     true,
-		"jws-withlegacysigners-removed":    true,
-		"jwe-remove-legacy-header-merging": true,
-		"jwa-es256k-extension":             true,
-		"jwa-secp256k1-extension":          true,
-		"jwa-ed448-extension":              true,
-		"jwa-eddsaed448-extension":         true,
+		"jws-register-signer":           true,
+		"jws-register-verifier":         true,
+		"jws-signerfactory-removed":     true,
+		"jws-signerfactoryfn-removed":   true,
+		"jws-signeradapter-removed":     true,
+		"jws-verifierfactory-removed":   true,
+		"jws-verifierfactoryfn-removed": true,
+		"jws-verifideradapter-removed":  true,
+		"jws-withlegacysigners-removed": true,
 		// jwt-withstrictbase64encoding-default is a pure documentation
 		// rule with no search_patterns: it advises users that the parse
 		// path now enforces strict base64 decoding by default. It can

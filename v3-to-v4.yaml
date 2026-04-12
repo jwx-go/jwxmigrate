@@ -805,6 +805,7 @@ rules:
     mechanical: true
     v3: "jws.SplitCompact"
     v4: "jwsbb.SplitCompact"
+    extension_module: "github.com/lestrrat-go/jwx/v4/jws/jwsbb"
     search_patterns:
       - 'jws\.SplitCompact\('
       - 'jws\.SplitCompactString\('

@@ -1,0 +1,3 @@
+main.go:8: [jwa-eddsaed448-extension] (mechanical) jwa.EdDSAEd448()
+
+total=1 mechanical=1 manual=0

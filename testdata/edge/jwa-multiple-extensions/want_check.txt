@@ -1,0 +1,7 @@
+main.go:4: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jwa"
+main.go:14: [jwa-es256k-extension] (mechanical) jwa.ES256K()
+main.go:15: [jwa-eddsaed448-extension] (mechanical) jwa.EdDSAEd448()
+main.go:21: [jwa-secp256k1-extension] (mechanical) jwa.Secp256k1()
+main.go:22: [jwa-ed448-extension] (mechanical) jwa.Ed448()
+
+total=5 mechanical=5 manual=0
