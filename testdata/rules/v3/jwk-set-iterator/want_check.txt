@@ -1,1 +1,4 @@
-(no findings)
+main.go:14: [jwk-set-iterator] (manual) set.Len()
+main.go:15: [jwk-set-iterator] (manual) set.Key(i)
+
+total=2 mechanical=0 manual=2

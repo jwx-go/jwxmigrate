@@ -4,12 +4,11 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
-// KNOWN GAP: jwk-set-iterator's search patterns (set.Len(), .Key(<ident>))
-// should match method calls on jwk.Set values, but the AST scanner only
-// matches package-qualified calls — method calls on local vars whose type
-// is a v3 type are missed unless type-checked loading succeeds. Golden is
-// "(no findings)" today; regenerate it when the scanner grows type-aware
-// method matching for this rule family.
+// jwk-set-iterator's search patterns target method calls on jwk.Set
+// values. Both set.Len() and set.Key(i) fire here — the scanner resolves
+// the receiver "set" via the parser-populated ast.Object chain back to
+// its declared type (func parameter jwk.Set), without needing go/packages
+// type-checked loading.
 
 func iterate(set jwk.Set) {
 	for i := 0; i < set.Len(); i++ {
