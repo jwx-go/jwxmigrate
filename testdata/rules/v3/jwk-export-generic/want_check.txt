@@ -1,0 +1,3 @@
+main.go:11: [jwk-export-generic] (manual) jwk.Export(key, &raw)
+
+total=1 mechanical=0 manual=1

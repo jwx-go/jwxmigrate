@@ -20,19 +20,20 @@ var ruleCoverageExemptions = map[string]map[string]bool{
 	// v3-to-v4: pilot PR ships fixtures for one rule per kind. Everything
 	// else is exempt and will be added in follow-up PRs.
 	"v3-to-v4": {
-		"build-tag-goccy":                      true,
-		"build-tag-asmbase64":                  true,
-		"build-tag-es256k":                     true,
-		"build-tag-secp256k1-pem":              true,
-		"rename-decodersettings-to-settings":   true,
-		"get-to-field":                         true,
-		"register-custom-field-generic":        true,
-		"register-custom-decoder-generic":      true,
-		"remove-readfileoption":                true,
-		"remove-withfs":                        true,
-		"jwk-import-generic":                   true,
-		"jwk-parsekey-generic":                 true,
-		"jwk-register-key-importer":            true,
+		"build-tag-goccy":                    true,
+		"build-tag-asmbase64":                true,
+		"build-tag-es256k":                   true,
+		"build-tag-secp256k1-pem":            true,
+		"rename-decodersettings-to-settings": true,
+		"get-to-field":                       true,
+		"register-custom-field-generic":      true,
+		"register-custom-decoder-generic":    true,
+		"remove-readfileoption":              true,
+		"remove-withfs":                      true,
+		// jwk option/Cache* rules: realistic call-site coverage lives in
+		// testdata/edge/jwk-cache-options which exercises NewCache plus
+		// every With*/Option* symbol in a single scenario. Per-rule
+		// fixtures would be trivial name-match stubs that test nothing.
 		"jwk-cacheoption-removed":              true,
 		"jwk-resourceoption-removed":           true,
 		"jwk-registeroption-removed":           true,
@@ -41,10 +42,9 @@ var ruleCoverageExemptions = map[string]map[string]bool{
 		"jwk-withconstantinterval-removed":     true,
 		"jwk-withmininterval-removed":          true,
 		"jwk-withmaxinterval-removed":          true,
-		"jwk-set-iterator":                     true,
+		// jwk-keyimporter-type-removed is covered in context by the
+		// jwk-register-key-importer fixture, which uses KeyImportFunc.
 		"jwk-keyimporter-type-removed":         true,
-		"jwk-registerprobefield-generic":       true,
-		"jwk-export-generic":                   true,
 		"jws-verifier2-to-verifier":            true,
 		"jws-register-signer":                  true,
 		"jws-register-verifier":                true,
