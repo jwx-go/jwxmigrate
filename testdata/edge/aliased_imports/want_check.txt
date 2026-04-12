@@ -1,0 +1,7 @@
+main.go:4: [import-v3-to-v4] (mechanical) myjwk "github.com/lestrrat-go/jwx/v3/jwk"
+main.go:5: [import-v3-to-v4] (mechanical) myjwt "github.com/lestrrat-go/jwx/v3/jwt"
+main.go:9: [jwk-import-generic] (manual) myjwk.Import(rawKey)
+main.go:10: [readfile-to-parsefs] (mechanical) myjwt.ReadFile("token.jwt")
+main.go:11: [register-custom-field-generic] (mechanical) myjwt.RegisterCustomField("my-field", "")
+
+total=5 mechanical=4 manual=1

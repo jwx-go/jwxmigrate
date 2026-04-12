@@ -1,0 +1,3 @@
+main.go:12: [jwt-validate-errors-structured] (manual) if errors.Is(err, jwt.TokenExpiredError()) {
+
+total=1 mechanical=0 manual=1

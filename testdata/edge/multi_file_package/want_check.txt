@@ -1,0 +1,6 @@
+a.go:4: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jwk"
+a.go:8: [jwk-import-generic] (manual) jwk.Import(rawKey)
+b.go:4: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jws"
+b.go:9: [jws-signer2-to-signer] (mechanical) jws.Signer2
+
+total=4 mechanical=3 manual=1

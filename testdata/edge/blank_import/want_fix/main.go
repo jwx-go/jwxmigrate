@@ -1,0 +1,14 @@
+package example
+
+import (
+	"fmt"
+
+	_ "github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+// A blank import must not trigger any API rule. Only the import-path rule
+// (import-v3-to-v4) should fire on the import line itself.
+
+func example() {
+	fmt.Println("hi")
+}

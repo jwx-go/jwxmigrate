@@ -1,0 +1,16 @@
+package example
+
+import (
+	"os"
+
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+func example(rawKey any) {
+	tok, _ := jwt.ParseFS(os.DirFS("."), "token.jwt")
+	key, _ := jwk.Import[jwk.RSAPrivateKey](rawKey)
+	jwt.RegisterCustomField[string]("my-field")
+	_ = tok
+	_ = key
+}

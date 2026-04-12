@@ -1,0 +1,4 @@
+main.go:6: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jws"
+main.go:12: [jws-signer2-to-signer] (mechanical) jws.Signer2
+
+total=2 mechanical=2 manual=0
