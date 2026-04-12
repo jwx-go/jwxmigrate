@@ -20,10 +20,6 @@ var ruleCoverageExemptions = map[string]map[string]bool{
 	// v3-to-v4: pilot PR ships fixtures for one rule per kind. Everything
 	// else is exempt and will be added in follow-up PRs.
 	"v3-to-v4": {
-		"build-tag-goccy":         true,
-		"build-tag-asmbase64":     true,
-		"build-tag-es256k":        true,
-		"build-tag-secp256k1-pem": true,
 		// jwk option/Cache* rules: realistic call-site coverage lives in
 		// testdata/edge/jwk-cache-options which exercises NewCache plus
 		// every With*/Option* symbol in a single scenario. Per-rule
@@ -53,11 +49,17 @@ var ruleCoverageExemptions = map[string]map[string]bool{
 		// path now enforces strict base64 decoding by default. It can
 		// never fire on any code and therefore has no fixture.
 		"jwt-withstrictbase64encoding-default": true,
-		"asmbase64-extension":                  true,
-		"dep-blackmagic-removed":               true,
-		"dep-goccy-removed":                    true,
-		"dep-segmentio-removed":                true,
-		"dep-option-v2-to-v3":                  true,
+		// asmbase64-extension has only the search pattern `asmbase64`
+		// and no file_patterns, so deriveRemovedOrMoved emits a
+		// MatchSelectorExpr that can only fire on `jwx.asmbase64` —
+		// which is not a real symbol. The rule is effectively
+		// unfireable on any realistic code today; users are instead
+		// caught by build-tag-asmbase64 when they reference the old
+		// build tag in a Makefile / shell script. Until the rule's
+		// triggers are reworked (add file_patterns, or merge into
+		// build-tag-asmbase64), there is no code that could exercise
+		// it from a fixture.
+		"asmbase64-extension": true,
 	},
 	// v2-to-v4: deferred to final PR. Populated via init() below to keep
 	// this map legible.
