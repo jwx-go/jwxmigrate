@@ -39,13 +39,15 @@ rules:
     package: all
     mechanical: true
     search_patterns:
-      - 'go 1\.\d+\.\d+'
+      - '^go 1\.(?:1\d|2[0-5])(?:\.\d+)?\s*$'
     file_patterns:
       - "go.mod"
     note: >
       Go version requirement changed from 1.25.0 to 1.26.0.
       Build requires GOEXPERIMENT=jsonv2 environment variable.
       Update go.mod and build scripts accordingly.
+      The search pattern only matches pre-migration `go` directives (1.25 and
+      below) so it will not fire on already-migrated go.mod files.
 
   - id: build-tag-goccy
     kind: build_change
@@ -496,7 +498,7 @@ rules:
     v4: "Set.All() iter.Seq2[int, Key], Set.Fields() iter.Seq2[string, any]"
     search_patterns:
       - 'set\.Len\(\)'
-      - '\.Key\(\d'
+      - '\.Key\([A-Za-z0-9_]+\)'
     note: >
       jwk.Set now supports Go iterators. Use range loops with All() for keys
       and Fields() for private parameters.
@@ -828,7 +830,7 @@ rules:
     v3: "Token — no iterator methods"
     v4: "Token.Claims() iter.Seq2[string, any]"
     search_patterns:
-      - 'token\.Keys\(\)'
+      - '\b[A-Za-z_][A-Za-z0-9_]*\.Keys\(\)'
     note: >
       jwt.Token now has a Claims() method returning an iterator over all claims
       (standard and private). Use with range loops.
