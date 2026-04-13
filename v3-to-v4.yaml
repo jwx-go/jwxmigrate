@@ -1082,14 +1082,14 @@ rules:
     search_patterns:
       - 'asmbase64'
     note: >
-      Assembly base64 is no longer a build tag. Import the extension module
-      and call Register() in an init function.
+      Assembly base64 is no longer a build tag. Add a blank import of the
+      extension module; its init() registers the assembly encoder/decoder
+      with jwx. No Register() call exists — the module is side-effect only.
     example:
       before: |
         // Build with: go build -tags=jwx_asmbase64
       after: |
-        import asmbase64 "github.com/jwx-go/asmbase64/v4"
-        func init() { asmbase64.Register() }
+        import _ "github.com/jwx-go/asmbase64/v4"
 
   # ============================================================
   # Dependency Changes
