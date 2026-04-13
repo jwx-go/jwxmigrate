@@ -82,16 +82,6 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 		return &FixResult{File: filePath, Remaining: unfixed}, nil
 	}
 
-	result := applyEdits(pf.Src, edits)
-	formatted, err := format.Source(result)
-	if err != nil {
-		formatted = result
-	}
-
-	if err := os.WriteFile(filePath, formatted, 0o644); err != nil {
-		return nil, fmt.Errorf("writing %s: %w", filePath, err)
-	}
-
 	applied := make(map[string]struct{})
 	for _, e := range edits {
 		applied[e.ruleID] = struct{}{}
@@ -102,7 +92,28 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 	}
 	sort.Strings(ids)
 
+	result := applyEdits(pf.Src, edits)
+	if err := writeFormatted(filePath, result, ids); err != nil {
+		return nil, err
+	}
+
 	return &FixResult{File: filePath, Applied: ids, Remaining: unfixed}, nil
+}
+
+// writeFormatted gofmts result and writes it to filePath. If format.Source
+// fails, the file is left untouched and an error naming the contributing
+// rule IDs is returned — silently writing unformatted (likely broken) Go
+// would hand users a code base that their next `go build` chokes on, with
+// no signal about which rule to blame.
+func writeFormatted(filePath string, result []byte, ruleIDs []string) error {
+	formatted, err := format.Source(result)
+	if err != nil {
+		return fmt.Errorf("refusing to write %s: post-edit source failed to format (rules: %s): %w", filePath, strings.Join(ruleIDs, ","), err)
+	}
+	if err := os.WriteFile(filePath, formatted, 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", filePath, err)
+	}
+	return nil
 }
 
 // taggedEdit is an Edit with its originating rule ID and the source line
