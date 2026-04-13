@@ -6,5 +6,5 @@ import (
 )
 
 func curve() jwa.EllipticCurveAlgorithm {
-	return ed448.Ed448Curve()
+	return ed448.Curve()
 }

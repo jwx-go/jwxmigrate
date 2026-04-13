@@ -913,7 +913,7 @@ rules:
     package: jwa
     mechanical: true
     v3: "jwa.Ed448"
-    v4: "ed448.Ed448Curve"
+    v4: "ed448.Curve"
     extension_module: "github.com/jwx-go/ed448/v4"
     search_patterns:
       - 'jwa\.Ed448\('
@@ -921,14 +921,14 @@ rules:
       - 'undefined: jwa.Ed448'
     note: >
       The Ed448 curve identifier moved to the ed448 extension package AND was
-      renamed: jwa.Ed448() → ed448.Ed448Curve(). Both the package and the
+      renamed: jwa.Ed448() → ed448.Curve(). Both the package and the
       function name changed. Import github.com/jwx-go/ed448/v4.
     example:
       before: |
         curve := jwa.Ed448()
       after: |
         import ed448 "github.com/jwx-go/ed448/v4"
-        curve := ed448.Ed448Curve()
+        curve := ed448.Curve()
 
   - id: jwa-eddsaed448-extension
     kind: moved_to_extension

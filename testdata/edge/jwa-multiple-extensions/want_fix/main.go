@@ -21,6 +21,6 @@ func algorithms() []jwa.SignatureAlgorithm {
 func curves() []jwa.EllipticCurveAlgorithm {
 	return []jwa.EllipticCurveAlgorithm{
 		es256k.Secp256k1(),
-		ed448.Ed448Curve(),
+		ed448.Curve(),
 	}
 }

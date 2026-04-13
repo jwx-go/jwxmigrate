@@ -320,7 +320,7 @@ rules:
     package: jwa
     mechanical: true
     v2: "jwa.Ed448"
-    v4: "ed448.Ed448Curve"
+    v4: "ed448.Curve"
     extension_module: "github.com/jwx-go/ed448/v4"
     search_patterns:
       - 'jwa\.Ed448\b'
@@ -329,8 +329,8 @@ rules:
     note: >
       The Ed448 curve moved out of core jwa AND changed shape: in v2 it was
       a constant (jwa.Ed448 of type EllipticCurveAlgorithm); in v4 it is a
-      function in the ed448 extension package (ed448.Ed448Curve()).
-      Rewrite jwa.Ed448 → ed448.Ed448Curve() and import
+      function in the ed448 extension package (ed448.Curve()).
+      Rewrite jwa.Ed448 → ed448.Curve() and import
       github.com/jwx-go/ed448/v4.
       Note: EdDSA-Ed448 did not exist as a signature algorithm in v2.
 
