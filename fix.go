@@ -13,6 +13,12 @@ import (
 	"strings"
 )
 
+// readfileToParseFSRuleID is the rule identifier for the
+// jwt.ReadFile/jwk.ReadFile → jwt.ParseFS/jwk.ParseFS rewrite in the
+// v3→v4 ruleset. Kept as a constant to satisfy goconst and to provide
+// a single canonical spelling.
+const readfileToParseFSRuleID = "readfile-to-parsefs"
+
 // Edit represents a byte-range replacement in source code.
 type Edit struct {
 	Start int
@@ -424,8 +430,8 @@ func parseExtensionTarget(v4 string) (pkg, name string) {
 //
 // An "os" import is injected in collectEdits's post-pass if any of these
 // rewrites were emitted and the file doesn't already import "os".
-func fixReadFileToParseFS(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int) []Edit {
-	if r.ID != "readfile-to-parsefs" && r.ID != "readfile-to-parsefs-v2" {
+func fixReadFileToParseFS(_ *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int) []Edit {
+	if r.ID != readfileToParseFSRuleID && r.ID != "readfile-to-parsefs-v2" {
 		return nil
 	}
 	sel, ok := node.Fun.(*ast.SelectorExpr)
@@ -467,7 +473,7 @@ func ensureOsImport(pf *ParsedGoFile, edits []taggedEdit, byteOffset func(token.
 	var hasReadFileFix bool
 	var triggerRuleID string
 	for _, e := range edits {
-		if e.ruleID == "readfile-to-parsefs" || e.ruleID == "readfile-to-parsefs-v2" {
+		if e.ruleID == readfileToParseFSRuleID || e.ruleID == "readfile-to-parsefs-v2" {
 			hasReadFileFix = true
 			triggerRuleID = e.ruleID
 			break
