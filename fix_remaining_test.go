@@ -123,7 +123,7 @@ func load(dynamic string) {
 
 	var readfileRemaining []Finding
 	for _, f := range result.Remaining {
-		if f.RuleID == "readfile-to-parsefs" {
+		if f.RuleID == readfileToParseFSRuleID {
 			readfileRemaining = append(readfileRemaining, f)
 		}
 	}
