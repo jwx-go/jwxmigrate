@@ -20,7 +20,7 @@ func TestWriteFormatted_RefusesBrokenSource(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, original, 0o644))
 
 	broken := []byte("package example\n\nfunc Hello() string { return \n")
-	err := writeFormatted(path, broken, []string{"rule-a", "rule-b"})
+	err := writeFormatted(path, broken, []string{"rule-a", "rule-b"}, false)
 	require.Error(t, err, `writeFormatted should refuse to write syntactically-broken Go`)
 	require.Contains(t, err.Error(), "refusing to write")
 	require.Contains(t, err.Error(), "rule-a")
@@ -39,7 +39,7 @@ func TestWriteFormatted_WritesValidSource(t *testing.T) {
 
 	// Intentionally unformatted — extra blank line and weird spacing.
 	input := []byte("package example\n\n\nfunc Hello() string {return   \"hi\"}\n")
-	require.NoError(t, writeFormatted(path, input, []string{"rule-a"}))
+	require.NoError(t, writeFormatted(path, input, []string{"rule-a"}, false))
 
 	got, err := os.ReadFile(path)
 	require.NoError(t, err)

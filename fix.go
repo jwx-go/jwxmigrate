@@ -8,6 +8,7 @@ import (
 	"go/types"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,10 +34,22 @@ type FixResult struct {
 	Remaining []Finding // issues that could not be auto-fixed
 }
 
+// FixOptions controls optional behavior of FixFile / FixFileWithOptions.
+type FixOptions struct {
+	// Backup, when true, causes writeFormatted to save the original file
+	// alongside the rewritten one as `<path>.bak` before overwriting.
+	Backup bool
+}
+
 // FixFile applies mechanical fixes to a single Go file in-place.
 // It also collects non-mechanical findings from the same parse so the
 // caller can report remaining issues without re-scanning.
 func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
+	return FixFileWithOptions(filePath, rules, FixOptions{})
+}
+
+// FixFileWithOptions is FixFile with caller-supplied FixOptions.
+func FixFileWithOptions(filePath string, rules []CompiledRule, opts FixOptions) (*FixResult, error) {
 	// Try type-checked loading first for type-aware fixes.
 	pf := parseGoFileTyped(filePath)
 	if pf == nil {
@@ -99,7 +112,7 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 	sort.Strings(ids)
 
 	result := applyEdits(pf.Src, edits)
-	if err := writeFormatted(filePath, result, ids); err != nil {
+	if err := writeFormatted(filePath, result, ids, opts.Backup); err != nil {
 		return nil, err
 	}
 
@@ -111,13 +124,54 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 // rule IDs is returned — silently writing unformatted (likely broken) Go
 // would hand users a code base that their next `go build` chokes on, with
 // no signal about which rule to blame.
-func writeFormatted(filePath string, result []byte, ruleIDs []string) error {
+//
+// Writes are atomic: we stage into a sibling temp file (same directory,
+// so os.Rename stays on one filesystem), fsync, then rename over the
+// target. A SIGINT/OOM/power event mid-write leaves either the old file
+// intact or the fully-written new file, never a half-flushed source.
+// When backup is true, the original file is copied to `<path>.bak`
+// before the rename.
+func writeFormatted(filePath string, result []byte, ruleIDs []string, backup bool) error {
 	formatted, err := format.Source(result)
 	if err != nil {
 		return fmt.Errorf("refusing to write %s: post-edit source failed to format (rules: %s): %w", filePath, strings.Join(ruleIDs, ","), err)
 	}
-	if err := os.WriteFile(filePath, formatted, 0o644); err != nil {
-		return fmt.Errorf("writing %s: %w", filePath, err)
+
+	if backup {
+		orig, err := os.ReadFile(filePath)
+		if err != nil {
+			return fmt.Errorf("reading %s for backup: %w", filePath, err)
+		}
+		if err := os.WriteFile(filePath+".bak", orig, 0o644); err != nil {
+			return fmt.Errorf("writing backup %s.bak: %w", filePath, err)
+		}
+	}
+
+	dir := filepath.Dir(filePath)
+	tmp, err := os.CreateTemp(dir, filepath.Base(filePath)+".jwxmigrate.tmp.*")
+	if err != nil {
+		return fmt.Errorf("creating temp for %s: %w", filePath, err)
+	}
+	tmpPath := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpPath) }
+
+	if _, err := tmp.Write(formatted); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return fmt.Errorf("writing temp for %s: %w", filePath, err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return fmt.Errorf("fsync temp for %s: %w", filePath, err)
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return fmt.Errorf("closing temp for %s: %w", filePath, err)
+	}
+	if err := os.Rename(tmpPath, filePath); err != nil {
+		cleanup()
+		return fmt.Errorf("renaming temp to %s: %w", filePath, err)
 	}
 	return nil
 }

@@ -24,6 +24,7 @@ func run(args []string) error {
 	mechanicalOnly := fset.Bool("mechanical", false, "only report mechanical (auto-fixable) rules")
 	ruleID := fset.String("rule", "", "only check a specific rule by ID")
 	fix := fset.Bool("fix", false, "apply mechanical fixes in-place")
+	backup := fset.Bool("backup", false, "with -fix, save <file>.bak next to each rewritten file")
 
 	if err := fset.Parse(args); err != nil {
 		return err
@@ -41,7 +42,10 @@ func run(args []string) error {
 	}
 
 	if *fix {
-		return runFix(target, rules)
+		return runFix(target, rules, FixOptions{Backup: *backup})
+	}
+	if *backup {
+		return fmt.Errorf("-backup only has an effect together with -fix")
 	}
 
 	return runCheck(target, rules, *format, *mechanicalOnly, *ruleID)
@@ -83,7 +87,7 @@ func runCheck(dir string, rules []CompiledRule, format string, mechanicalOnly bo
 	return nil
 }
 
-func runFix(target string, rules []CompiledRule) error {
+func runFix(target string, rules []CompiledRule, opts FixOptions) error {
 	info, err := os.Stat(target)
 	if err != nil {
 		return fmt.Errorf("cannot access %s: %w", target, err)
@@ -99,7 +103,7 @@ func runFix(target string, rules []CompiledRule) error {
 		files = []string{target}
 	}
 
-	summary := fixFiles(files, rules, os.Stdout, os.Stderr)
+	summary := fixFiles(files, rules, opts, os.Stdout, os.Stderr)
 	if len(summary.failures) > 0 || len(summary.remaining) > 0 {
 		os.Exit(1)
 	}
@@ -122,10 +126,10 @@ type fixBatchSummary struct {
 // emits a single manifest at the end instead of aborting the batch and
 // leaving the working tree half-migrated with no record of what was
 // skipped.
-func fixFiles(files []string, rules []CompiledRule, out, errw io.Writer) fixBatchSummary {
+func fixFiles(files []string, rules []CompiledRule, opts FixOptions, out, errw io.Writer) fixBatchSummary {
 	var summary fixBatchSummary
 	for _, f := range files {
-		result, err := FixFile(f, rules)
+		result, err := FixFileWithOptions(f, rules, opts)
 		if err != nil {
 			summary.failures = append(summary.failures, fixFailure{file: f, err: err})
 			_, _ = fmt.Fprintf(errw, "%s: skipped: %s\n", f, err)

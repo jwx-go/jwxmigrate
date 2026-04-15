@@ -31,7 +31,7 @@ func TestFixFiles_ContinuesPastPerFileFailure(t *testing.T) {
 	require.NoError(t, os.WriteFile(good, []byte("package x\n\nfunc Ok() string { return \"hi\" }\n"), 0o644))
 
 	var out, errw bytes.Buffer
-	summary := fixFiles([]string{missing, good}, rules, &out, &errw)
+	summary := fixFiles([]string{missing, good}, rules, FixOptions{}, &out, &errw)
 
 	require.Len(t, summary.failures, 1, "missing file should be collected as a skipped failure")
 	require.Equal(t, missing, summary.failures[0].file)
