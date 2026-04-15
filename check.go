@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -150,6 +151,12 @@ func checkGoFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Findin
 
 		pf, err := parseGoFile(absPath, rel)
 		if err != nil {
+			// Scanner path intentionally ignores parse failures —
+			// testdata fixtures are commonly unparseable. The --fix
+			// path surfaces this sentinel instead.
+			if errors.Is(err, errParseFailed) {
+				return nil
+			}
 			return err
 		}
 		if pf == nil {
