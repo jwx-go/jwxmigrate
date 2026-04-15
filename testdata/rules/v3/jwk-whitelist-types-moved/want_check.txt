@@ -1,0 +1,8 @@
+main.go:12: [jwk-whitelist-types-moved] (manual) jwk.InsecureWhitelist
+main.go:13: [jwk-whitelist-types-moved] (manual) jwk.NewMapWhitelist()
+main.go:14: [jwk-whitelist-types-moved] (manual) jwk.MapWhitelist
+main.go:15: [jwk-whitelist-types-moved] (manual) jwk.RegexpWhitelist
+main.go:16: [jwk-whitelist-types-moved] (manual) jwk.WhitelistFunc(func(url string) bool { return false })
+main.go:17: [jwk-whitelist-types-moved] (manual) jwk.WhitelistError()
+
+total=6 mechanical=0 manual=6

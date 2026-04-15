@@ -460,7 +460,11 @@ rules:
       - 'RegisterFetchOption\b'
     compiler_hints:
       - 'undefined: jwk.RegisterFetchOption'
-    note: RegisterFetchOption interface removed along with the caching subsystem.
+    note: >
+      RegisterFetchOption interface removed along with the caching subsystem.
+      Fetch-side configuration now lives on jwkfetch.Client options
+      (jwkfetch.WithHTTPClient, jwkfetch.WithWhitelist, jwkfetch.WithMaxBodySize)
+      in github.com/jwx-go/jwkfetch/v4.
 
   - id: jwk-withhttprcresourceoption-removed
     kind: removed
@@ -471,7 +475,10 @@ rules:
       - 'WithHttprcResourceOption\('
     compiler_hints:
       - 'undefined: jwk.WithHttprcResourceOption'
-    note: Removed along with the caching subsystem. Configure httprc directly via jwkcache.
+    note: >
+      Removed along with the caching subsystem. Configure via jwkfetch.Client /
+      jwkfetch.Cache from github.com/jwx-go/jwkfetch/v4, which supersedes both
+      the v3 jwk.Fetch / jwk.Whitelist surface and the jwx-go/jwkcache companion.
 
   - id: jwk-withconstantinterval-removed
     kind: removed
@@ -1072,6 +1079,207 @@ rules:
         cache, err := jwkcache.NewCache(ctx, httprc.NewClient())
         cache.Register(ctx, url)
         set, err := cache.Lookup(ctx, url)
+
+  # --- HTTP JWKS surface moved to jwkfetch ---
+  #
+  # Everything HTTP-touching in v3's jwk package (Fetch, Whitelist*, HTTP
+  # options, the Fetcher interface shape, and the jws/jwt WithVerifyAuto
+  # variadic options) moved out of core in v4. The target companion is
+  # github.com/jwx-go/jwkfetch/v4, which supersedes both the v3 Fetch/Whitelist
+  # surface and the v3 jwx-go/jwkcache companion. See MIGRATION.md Recipe 6.
+
+  - id: jwk-fetch-moved
+    kind: moved_to_extension
+    package: jwk
+    mechanical: false
+    v3: Fetch
+    extension_module: "github.com/jwx-go/jwkfetch/v4"
+    search_patterns:
+      - 'jwk\.Fetch\('
+    compiler_hints:
+      - 'undefined: jwk.Fetch'
+    note: >
+      jwk.Fetch is removed from the core library. Use
+      jwkfetch.NewClient(opts...).Fetch(ctx, url) from
+      github.com/jwx-go/jwkfetch/v4. Non-mechanical because every call site
+      must be reshaped: construct a jwkfetch.Client once, then call Fetch on
+      it. The default is permissive (every URL allowed), matching v3's
+      jwk.Fetch behavior for trusted, hard-coded URLs; jku-style verification
+      must add an explicit jwkfetch.WithWhitelist — see jws-withverifyauto-signature.
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jwk"
+
+        set, err := jwk.Fetch(ctx, url, jwk.WithHTTPClient(httpClient))
+      after: |
+        import "github.com/jwx-go/jwkfetch/v4"
+
+        client := jwkfetch.NewClient(jwkfetch.WithHTTPClient(httpClient))
+        set, err := client.Fetch(ctx, url)
+
+  - id: jwk-withhttpclient-moved
+    kind: moved_to_extension
+    package: jwk
+    mechanical: false
+    v3: WithHTTPClient
+    extension_module: "github.com/jwx-go/jwkfetch/v4"
+    search_patterns:
+      - 'jwk\.WithHTTPClient\('
+    compiler_hints:
+      - 'undefined: jwk.WithHTTPClient'
+    note: >
+      jwk.WithHTTPClient moved to jwkfetch.WithHTTPClient. The option only
+      makes sense on a jwkfetch.Client / jwkfetch.Cache constructor, so the
+      call site has to migrate to the new constructor together with this
+      option — non-mechanical.
+
+  - id: jwk-withfetchwhitelist-moved
+    kind: moved_to_extension
+    package: jwk
+    mechanical: false
+    v3: WithFetchWhitelist
+    extension_module: "github.com/jwx-go/jwkfetch/v4"
+    search_patterns:
+      - 'jwk\.WithFetchWhitelist\('
+    compiler_hints:
+      - 'undefined: jwk.WithFetchWhitelist'
+    note: >
+      jwk.WithFetchWhitelist(w) moved and renamed to jwkfetch.WithWhitelist(w)
+      in github.com/jwx-go/jwkfetch/v4. Default behavior when no WithWhitelist
+      is set is PERMISSIVE (matches v3 jwk.Fetch for trusted URLs). Callers
+      migrating jws.WithVerifyAuto / jwt.WithVerifyAuto MUST add an explicit
+      whitelist because v3's implicit deny-all wrapper is gone — see
+      jws-withverifyauto-signature and MIGRATION.md Recipe 6.
+
+  - id: jwk-withmaxfetchbodysize-moved
+    kind: moved_to_extension
+    package: jwk
+    mechanical: false
+    v3: WithMaxFetchBodySize
+    extension_module: "github.com/jwx-go/jwkfetch/v4"
+    search_patterns:
+      - 'jwk\.WithMaxFetchBodySize\('
+    compiler_hints:
+      - 'undefined: jwk.WithMaxFetchBodySize'
+    note: >
+      jwk.WithMaxFetchBodySize(n) moved and renamed to
+      jwkfetch.WithMaxBodySize(n) in github.com/jwx-go/jwkfetch/v4.
+
+  - id: jwk-whitelist-types-moved
+    kind: moved_to_extension
+    package: jwk
+    mechanical: false
+    v3: "Whitelist (InsecureWhitelist, MapWhitelist, RegexpWhitelist, WhitelistFunc, WhitelistError)"
+    extension_module: "github.com/jwx-go/jwkfetch/v4"
+    search_patterns:
+      - 'jwk\.InsecureWhitelist\b'
+      - 'jwk\.MapWhitelist\b'
+      - 'jwk\.NewMapWhitelist\('
+      - 'jwk\.RegexpWhitelist\b'
+      - 'jwk\.WhitelistFunc\b'
+      - 'jwk\.WhitelistError\('
+    compiler_hints:
+      - 'undefined: jwk.InsecureWhitelist'
+      - 'undefined: jwk.MapWhitelist'
+      - 'undefined: jwk.NewMapWhitelist'
+      - 'undefined: jwk.RegexpWhitelist'
+      - 'undefined: jwk.WhitelistFunc'
+      - 'undefined: jwk.WhitelistError'
+    note: >
+      The entire whitelist family (InsecureWhitelist, MapWhitelist,
+      NewMapWhitelist, RegexpWhitelist, WhitelistFunc, WhitelistError) moved
+      to github.com/jwx-go/jwkfetch/v4 with the same names. Pass them to
+      jwkfetch.WithWhitelist when constructing a jwkfetch.Client.
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jwk"
+
+        wl := jwk.NewMapWhitelist().Add("https://issuer.example/jwks.json")
+        set, err := jwk.Fetch(ctx, url, jwk.WithFetchWhitelist(wl))
+      after: |
+        import "github.com/jwx-go/jwkfetch/v4"
+
+        wl := jwkfetch.NewMapWhitelist().Add("https://issuer.example/jwks.json")
+        client := jwkfetch.NewClient(jwkfetch.WithWhitelist(wl))
+        set, err := client.Fetch(ctx, url)
+
+  - id: jws-withverifyauto-signature
+    kind: signature_change
+    package: jws
+    mechanical: false
+    v3: WithVerifyAuto
+    v4: WithVerifyAuto
+    v3_signature: "WithVerifyAuto(f jwk.Fetcher, opts ...jwk.FetchOption) VerifyOption"
+    v4_signature: "WithVerifyAuto(f jwk.Fetcher) VerifyOption"
+    search_patterns:
+      - 'jws\.WithVerifyAuto\('
+    compiler_hints:
+      - 'too many arguments in call to jws.WithVerifyAuto'
+    note: >
+      SECURITY-RELEVANT. The variadic jwk.FetchOption tail is dropped. v3's
+      implicit deny-all whitelist wrapper is gone: jws.WithVerifyAuto(nil, ...)
+      no longer silently uses jwk.Fetch — it errors at verification time.
+      Construct a jwkfetch.Client with an explicit jwkfetch.WithWhitelist and
+      pass it as the sole argument. This is the SSRF protection for jku-style
+      verification; see MIGRATION.md Recipe 6 "Security note for jku callers".
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jws"
+
+        wl := jwk.NewMapWhitelist().Add("https://issuer.example/jwks.json")
+        _, err := jws.Verify(signed,
+            jws.WithVerifyAuto(nil, jwk.WithFetchWhitelist(wl)))
+      after: |
+        import (
+            "github.com/jwx-go/jwkfetch/v4"
+            "github.com/lestrrat-go/jwx/v4/jws"
+        )
+
+        client := jwkfetch.NewClient(
+            jwkfetch.WithWhitelist(
+                jwkfetch.NewMapWhitelist().Add("https://issuer.example/jwks.json"),
+            ),
+        )
+        _, err := jws.Verify(signed, jws.WithVerifyAuto(client))
+
+  - id: jwt-withverifyauto-signature
+    kind: signature_change
+    package: jwt
+    mechanical: false
+    v3: WithVerifyAuto
+    v4: WithVerifyAuto
+    v3_signature: "WithVerifyAuto(f jwk.Fetcher, opts ...jwk.FetchOption) ParseOption"
+    v4_signature: "WithVerifyAuto(f jwk.Fetcher) ParseOption"
+    search_patterns:
+      - 'jwt\.WithVerifyAuto\('
+    compiler_hints:
+      - 'too many arguments in call to jwt.WithVerifyAuto'
+    note: >
+      SECURITY-RELEVANT. Same change as jws-withverifyauto-signature: variadic
+      jwk.FetchOption tail dropped, nil fetcher now errors at verification
+      time instead of silently using jwk.Fetch. Construct a jwkfetch.Client
+      with an explicit jwkfetch.WithWhitelist and pass it as the sole argument.
+      See jws-withverifyauto-signature for the full SSRF discussion.
+
+  - id: jwk-fetcher-interface-shape-change
+    kind: type_change
+    package: jwk
+    mechanical: false
+    v3: Fetcher
+    v4: Fetcher
+    v3_signature: "Fetch(ctx context.Context, url string, options ...FetchOption) (Set, error)"
+    v4_signature: "Fetch(ctx context.Context, url string) (Set, error)"
+    search_patterns:
+      - 'jwk\.Fetcher\b'
+    compiler_hints:
+      - 'does not implement jwk.Fetcher'
+      - 'wrong type for method Fetch'
+    note: >
+      The jwk.Fetcher interface keeps its name but drops the variadic
+      FetchOption tail. Third-party implementations must update their Fetch
+      method to the new two-argument signature. jwkfetch.Client and
+      jwkfetch.Cache from github.com/jwx-go/jwkfetch/v4 both satisfy the new
+      shape out of the box.
 
   - id: asmbase64-extension
     kind: moved_to_extension

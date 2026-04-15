@@ -1,0 +1,3 @@
+main.go:10: [jwk-withfetchwhitelist-moved] (manual) jwk.WithFetchWhitelist(wl)
+
+total=1 mechanical=0 manual=1

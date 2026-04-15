@@ -1,0 +1,3 @@
+main.go:9: [jws-withverifyauto-signature] (manual) jws.WithVerifyAuto(nil, jwk.WithFetchWhitelist(wl))
+
+total=1 mechanical=0 manual=1
