@@ -158,36 +158,72 @@ func checkGoFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Findin
 	return append(typedFindings, untypedFindings...), err
 }
 
-// checkBuildFiles is lenient about per-file errors: malformed globs,
-// unreadable files, and per-rule scan failures are skipped rather than
-// aborting the whole scan.
+// checkBuildFiles walks the tree rooted at dir and scans every file whose
+// basename matches any active rule's file_patterns. The walk recurses into
+// dotfile directories like .github/ because build-tag usage overwhelmingly
+// lives in GitHub Actions workflows and similar hidden config paths; only
+// vendor/ and node_modules/ are pruned.
+//
+// It is lenient about per-file errors: bad patterns, unreadable files, and
+// per-rule scan failures are skipped rather than aborting the whole scan.
 func checkBuildFiles(dir string, rules []CompiledRule, opts CheckOptions) []Finding {
-	var findings []Finding
-
+	active := make([]*CompiledRule, 0, len(rules))
 	for i := range rules {
 		r := &rules[i]
 		if shouldSkip(r, opts) {
 			continue
 		}
+		if len(r.FilePatterns) == 0 {
+			continue
+		}
+		active = append(active, r)
+	}
+	if len(active) == 0 {
+		return nil
+	}
 
-		for _, globPat := range r.FilePatterns {
-			matches, err := filepath.Glob(filepath.Join(dir, globPat))
-			if err != nil {
+	var findings []Finding
+	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			name := d.Name()
+			if path != dir && (name == "vendor" || name == "node_modules") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		base := d.Name()
+		rel, relErr := filepath.Rel(dir, path)
+		if relErr != nil {
+			rel = path
+		}
+
+		for _, r := range active {
+			matched := false
+			for _, pat := range r.FilePatterns {
+				ok, mErr := filepath.Match(pat, base)
+				if mErr == nil && ok {
+					matched = true
+					break
+				}
+			}
+			if !matched {
 				continue
 			}
-			for _, path := range matches {
-				rel, err := filepath.Rel(dir, path)
-				if err != nil {
-					rel = path
-				}
-				ff, err := scanFileForRule(path, rel, r)
-				if err != nil {
-					continue
-				}
-				findings = append(findings, ff...)
+			ff, scanErr := scanFileForRule(path, rel, r)
+			if scanErr != nil {
+				continue
 			}
+			findings = append(findings, ff...)
 		}
-	}
+		return nil
+	})
 
 	return findings
 }
