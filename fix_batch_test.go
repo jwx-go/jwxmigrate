@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,4 +38,33 @@ func TestFixFiles_ContinuesPastPerFileFailure(t *testing.T) {
 	require.Equal(t, missing, summary.failures[0].file)
 	require.Contains(t, errw.String(), "missing.go: skipped:", "stderr manifest should name the skipped file")
 	require.Contains(t, errw.String(), "1 file(s) skipped due to errors:", "stderr should emit a summary footer")
+}
+
+// Regression for JWXMIGRATE-20260415151950-090: the --fix path must surface
+// parse failures instead of silently skipping broken files. parseGoFile
+// returns errParseFailed, which FixFileWithOptions propagates so fixFiles
+// lists the file in the skipped-errors manifest.
+func TestFixFiles_SurfacesParseError(t *testing.T) {
+	rules, err := loadRules("v3-to-v4")
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	broken := filepath.Join(dir, "broken.go")
+	src := `package example
+
+import "github.com/lestrrat-go/jwx/v3/jwk"
+
+func broken( {
+	_ = jwk.Import
+`
+	require.NoError(t, os.WriteFile(broken, []byte(src), 0o644))
+
+	var out, errw bytes.Buffer
+	summary := fixFiles([]string{broken}, rules, FixOptions{}, &out, &errw)
+
+	require.Len(t, summary.failures, 1, "broken file must be recorded as a failure")
+	require.Equal(t, broken, summary.failures[0].file)
+	require.True(t, errors.Is(summary.failures[0].err, errParseFailed), "failure must wrap errParseFailed")
+	require.Contains(t, errw.String(), "broken.go: skipped:")
+	require.Contains(t, errw.String(), "parse failed")
 }

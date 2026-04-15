@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -15,6 +17,12 @@ import (
 
 	"golang.org/x/tools/go/packages"
 )
+
+// errParseFailed wraps a parser.ParseFile failure returned from parseGoFile.
+// Scanner callers swallow this sentinel (broken testdata files are expected);
+// the --fix path surfaces it so users see which files were skipped instead of
+// finishing with a false-clean report.
+var errParseFailed = errors.New("parse failed")
 
 var versionSuffix = regexp.MustCompile(`^v\d+$`)
 
@@ -52,9 +60,7 @@ func parseGoFile(filePath, rel string) (*ParsedGoFile, error) {
 	fset := token.NewFileSet()
 	astFile, err := parser.ParseFile(fset, filePath, src, parser.ParseComments)
 	if err != nil {
-		// Silently skip files that don't parse — testdata and broken Go
-		// files are not errors from the scanner's point of view.
-		return nil, nil //nolint:nilerr,nilnil
+		return nil, fmt.Errorf("%w: %w", errParseFailed, err)
 	}
 
 	v3Imports := buildV3ImportMap(astFile)
