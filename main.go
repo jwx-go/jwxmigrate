@@ -11,13 +11,15 @@ import (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	code, err := run(os.Args[1:])
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "jwxmigrate: %s\n", err)
 		os.Exit(2)
 	}
+	os.Exit(code)
 }
 
-func run(args []string) error {
+func run(args []string) (int, error) {
 	fset := flag.NewFlagSet("jwxmigrate", flag.ContinueOnError)
 	from := fset.String("from", "v3", "source version to migrate from: v2 or v3")
 	format := fset.String("format", "text", "output format: text or json")
@@ -27,7 +29,7 @@ func run(args []string) error {
 	backup := fset.Bool("backup", false, "with -fix, save <file>.bak next to each rewritten file")
 
 	if err := fset.Parse(args); err != nil {
-		return err
+		return 0, err
 	}
 
 	target := "."
@@ -38,26 +40,26 @@ func run(args []string) error {
 	migration := *from + "-to-v4"
 	rules, err := loadRules(migration)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	if *fix {
 		return runFix(target, rules, FixOptions{Backup: *backup})
 	}
 	if *backup {
-		return fmt.Errorf("-backup only has an effect together with -fix")
+		return 0, fmt.Errorf("-backup only has an effect together with -fix")
 	}
 
 	return runCheck(target, rules, *format, *mechanicalOnly, *ruleID)
 }
 
-func runCheck(dir string, rules []CompiledRule, format string, mechanicalOnly bool, ruleID string) error {
+func runCheck(dir string, rules []CompiledRule, format string, mechanicalOnly bool, ruleID string) (int, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
-		return fmt.Errorf("cannot access %s: %w", dir, err)
+		return 0, fmt.Errorf("cannot access %s: %w", dir, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("%s is not a directory", dir)
+		return 0, fmt.Errorf("%s is not a directory", dir)
 	}
 
 	opts := CheckOptions{
@@ -67,7 +69,7 @@ func runCheck(dir string, rules []CompiledRule, format string, mechanicalOnly bo
 
 	result, err := Check(dir, rules, opts)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	switch format {
@@ -75,29 +77,29 @@ func runCheck(dir string, rules []CompiledRule, format string, mechanicalOnly bo
 		FormatText(os.Stdout, result)
 	case "json":
 		if err := FormatJSON(os.Stdout, result); err != nil {
-			return err
+			return 0, err
 		}
 	default:
-		return fmt.Errorf("unknown format %q; available: text, json", format)
+		return 0, fmt.Errorf("unknown format %q; available: text, json", format)
 	}
 
 	if result.Total > 0 {
-		os.Exit(1)
+		return 1, nil
 	}
-	return nil
+	return 0, nil
 }
 
-func runFix(target string, rules []CompiledRule, opts FixOptions) error {
+func runFix(target string, rules []CompiledRule, opts FixOptions) (int, error) {
 	info, err := os.Stat(target)
 	if err != nil {
-		return fmt.Errorf("cannot access %s: %w", target, err)
+		return 0, fmt.Errorf("cannot access %s: %w", target, err)
 	}
 
 	var files []string
 	if info.IsDir() {
 		files, err = findGoFiles(target)
 		if err != nil {
-			return err
+			return 0, err
 		}
 	} else {
 		files = []string{target}
@@ -105,9 +107,9 @@ func runFix(target string, rules []CompiledRule, opts FixOptions) error {
 
 	summary := fixFiles(files, rules, opts, os.Stdout, os.Stderr)
 	if len(summary.failures) > 0 || len(summary.remaining) > 0 {
-		os.Exit(1)
+		return 1, nil
 	}
-	return nil
+	return 0, nil
 }
 
 type fixFailure struct {
