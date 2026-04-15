@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -98,38 +99,69 @@ func runFix(target string, rules []CompiledRule) error {
 		files = []string{target}
 	}
 
-	var totalFixed int
-	var allRemaining []Finding
+	summary := fixFiles(files, rules, os.Stdout, os.Stderr)
+	if len(summary.failures) > 0 || len(summary.remaining) > 0 {
+		os.Exit(1)
+	}
+	return nil
+}
+
+type fixFailure struct {
+	file string
+	err  error
+}
+
+type fixBatchSummary struct {
+	totalFixed int
+	remaining  []Finding
+	failures   []fixFailure
+}
+
+// fixFiles applies FixFile to every file and keeps going when individual
+// files fail. Errors are collected into summary.failures so the caller
+// emits a single manifest at the end instead of aborting the batch and
+// leaving the working tree half-migrated with no record of what was
+// skipped.
+func fixFiles(files []string, rules []CompiledRule, out, errw io.Writer) fixBatchSummary {
+	var summary fixBatchSummary
 	for _, f := range files {
 		result, err := FixFile(f, rules)
 		if err != nil {
-			return fmt.Errorf("fixing %s: %w", f, err)
+			summary.failures = append(summary.failures, fixFailure{file: f, err: err})
+			_, _ = fmt.Fprintf(errw, "%s: skipped: %s\n", f, err)
+			continue
 		}
 		if result == nil {
 			continue
 		}
 		if len(result.Applied) > 0 {
-			totalFixed += len(result.Applied)
-			_, _ = fmt.Fprintf(os.Stdout, "%s: applied %s\n", result.File, strings.Join(result.Applied, ", "))
+			summary.totalFixed += len(result.Applied)
+			_, _ = fmt.Fprintf(out, "%s: applied %s\n", result.File, strings.Join(result.Applied, ", "))
 		}
-		allRemaining = append(allRemaining, result.Remaining...)
+		summary.remaining = append(summary.remaining, result.Remaining...)
 	}
 
-	if totalFixed == 0 {
-		_, _ = fmt.Fprintln(os.Stdout, "no mechanical fixes to apply")
+	if summary.totalFixed == 0 {
+		_, _ = fmt.Fprintln(out, "no mechanical fixes to apply")
 	} else {
-		_, _ = fmt.Fprintf(os.Stdout, "\n%d rule(s) applied\n", totalFixed)
+		_, _ = fmt.Fprintf(out, "\n%d rule(s) applied across %d file(s)\n", summary.totalFixed, len(files)-len(summary.failures))
 	}
 
-	if len(allRemaining) > 0 {
-		_, _ = fmt.Fprintf(os.Stdout, "\nRemaining issues (%d):\n\n", len(allRemaining))
-		for _, f := range allRemaining {
-			_, _ = fmt.Fprintf(os.Stdout, "  %s:%d:\n", f.File, f.Line)
-			_, _ = fmt.Fprintf(os.Stdout, "    %s\n\n", f.Note)
+	if len(summary.failures) > 0 {
+		_, _ = fmt.Fprintf(errw, "\n%d file(s) skipped due to errors:\n", len(summary.failures))
+		for _, fail := range summary.failures {
+			_, _ = fmt.Fprintf(errw, "  %s: %s\n", fail.file, fail.err)
 		}
-		os.Exit(1)
 	}
-	return nil
+
+	if len(summary.remaining) > 0 {
+		_, _ = fmt.Fprintf(out, "\nRemaining issues (%d):\n\n", len(summary.remaining))
+		for _, f := range summary.remaining {
+			_, _ = fmt.Fprintf(out, "  %s:%d:\n", f.File, f.Line)
+			_, _ = fmt.Fprintf(out, "    %s\n\n", f.Note)
+		}
+	}
+	return summary
 }
 
 func findGoFiles(dir string) ([]string, error) {
