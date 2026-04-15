@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"go/ast"
 	"go/parser"
@@ -547,13 +546,14 @@ func typeIsFromV3(t types.Type) bool {
 }
 
 // regexFallback performs line-by-line regex matching on the source bytes.
+// pf.Src is already in memory, so we iterate via bytes.Lines instead of
+// bufio.Scanner — no per-line size cap and no error path to worry about.
 func regexFallback(pf *ParsedGoFile, r *CompiledRule) []Finding {
 	var findings []Finding
-	scanner := bufio.NewScanner(bytes.NewReader(pf.Src))
 	lineNum := 0
-	for scanner.Scan() {
+	for rawLine := range bytes.Lines(pf.Src) {
 		lineNum++
-		line := scanner.Text()
+		line := string(bytes.TrimRight(rawLine, "\r\n"))
 		for _, pat := range r.Patterns {
 			if pat.MatchString(line) {
 				f := Finding{
