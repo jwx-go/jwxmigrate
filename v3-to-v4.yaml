@@ -376,7 +376,7 @@ rules:
     package: jwk
     mechanical: false
     v3: Cache
-    replacement: "github.com/jwx-go/jwkcache/v4"
+    replacement: "github.com/jwx-go/jwkfetch/v4"
     search_patterns:
       - 'jwk\.NewCache\('
       - 'jwk\.Cache\b'
@@ -394,8 +394,11 @@ rules:
     note: >
       jwk.Cache, jwk.NewCache, jwk.CachedSet, jwk.NewCachedSet, jwk.CachedFetcher,
       and jwk.NewCachedFetcher are all removed from the core library.
-      Use the extension module github.com/jwx-go/jwkcache/v4 instead.
-      The new API uses jwkcache.NewCache(), c.Register(), and c.Lookup().
+      Use the extension module github.com/jwx-go/jwkfetch/v4, which supersedes
+      both the v3 jwk.Fetch / jwk.Whitelist surface and the standalone v3
+      jwx-go/jwkcache companion. See MIGRATION.md Recipe 6.
+      The new API uses jwkfetch.NewCache(ctx, httprc.NewClient()),
+      cache.Register(ctx, url, jwkfetch.WithMinInterval(...)), and cache.Lookup(ctx, url).
     example:
       before: |
         import (
@@ -408,12 +411,12 @@ rules:
         set, err := cache.Lookup(ctx, url)
       after: |
         import (
+            "github.com/jwx-go/jwkfetch/v4"
             "github.com/lestrrat-go/httprc/v3"
-            "github.com/jwx-go/jwkcache/v4"
         )
 
-        cache, err := jwkcache.NewCache(ctx, httprc.NewClient())
-        cache.Register(ctx, url)
+        cache, err := jwkfetch.NewCache(ctx, httprc.NewClient())
+        _ = cache.Register(ctx, url, jwkfetch.WithMinInterval(15*time.Minute))
         set, err := cache.Lookup(ctx, url)
 
   - id: jwk-cacheoption-removed
@@ -426,8 +429,8 @@ rules:
     compiler_hints:
       - 'undefined: jwk.CacheOption'
     note: >
-      CacheOption interface removed. Use jwkcache options from
-      github.com/jwx-go/jwkcache/v4 instead.
+      CacheOption interface removed. Use jwkfetch options from
+      github.com/jwx-go/jwkfetch/v4 instead (see MIGRATION.md Recipe 6).
 
   - id: jwk-resourceoption-removed
     kind: removed
@@ -1053,16 +1056,19 @@ rules:
     package: jwk
     mechanical: false
     v3: "Cache (jwk.NewCache, jwk.CachedSet, etc.)"
-    extension_module: "github.com/jwx-go/jwkcache/v4"
+    extension_module: "github.com/jwx-go/jwkfetch/v4"
     search_patterns:
       - 'jwk\.NewCache\('
       - 'jwk\.CachedSet\b'
       - 'jwk\.CachedFetcher\b'
     note: >
       The entire JWK caching subsystem (Cache, NewCache, CachedSet, NewCachedSet,
-      CachedFetcher, NewCachedFetcher) moved to an extension module.
-      API changed: NewCache takes (ctx, *httprc.Client), Register replaces
-      cache.Register with refresh options, Get becomes Lookup.
+      CachedFetcher, NewCachedFetcher) moved to github.com/jwx-go/jwkfetch/v4,
+      which supersedes both the v3 jwk.Fetch / jwk.Whitelist surface and the
+      standalone v3 jwx-go/jwkcache companion. See MIGRATION.md Recipe 6.
+      API changed: jwkfetch.NewCache takes (ctx, *httprc.Client), Register takes
+      (ctx, url, opts...) with refresh options like jwkfetch.WithMinInterval,
+      and Get becomes Lookup.
     example:
       before: |
         import "github.com/lestrrat-go/jwx/v3/jwk"
@@ -1072,12 +1078,12 @@ rules:
         set, err := cache.Get(ctx, url)
       after: |
         import (
+            "github.com/jwx-go/jwkfetch/v4"
             "github.com/lestrrat-go/httprc/v3"
-            "github.com/jwx-go/jwkcache/v4"
         )
 
-        cache, err := jwkcache.NewCache(ctx, httprc.NewClient())
-        cache.Register(ctx, url)
+        cache, err := jwkfetch.NewCache(ctx, httprc.NewClient())
+        _ = cache.Register(ctx, url, jwkfetch.WithMinInterval(15*time.Minute))
         set, err := cache.Lookup(ctx, url)
 
   # --- HTTP JWKS surface moved to jwkfetch ---

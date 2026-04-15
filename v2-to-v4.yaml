@@ -434,7 +434,7 @@ rules:
     package: jwk
     mechanical: false
     v2: Cache
-    replacement: "github.com/jwx-go/jwkcache/v4"
+    replacement: "github.com/jwx-go/jwkfetch/v4"
     search_patterns:
       - 'jwk\.NewCache\('
       - 'jwk\.Cache\b'
@@ -448,19 +448,25 @@ rules:
       - 'undefined: jwk.CachedSet'
       - 'undefined: jwk.NewCachedSet'
     note: >
-      The entire JWK caching subsystem moved to github.com/jwx-go/jwkcache/v4.
+      The entire JWK caching subsystem moved to github.com/jwx-go/jwkfetch/v4,
+      which supersedes both the v2/v3 jwk.Fetch / jwk.Whitelist surface and the
+      standalone v3 jwx-go/jwkcache companion. See MIGRATION.md Recipe 6.
       The v2 API used jwk.NewCache(ctx, options...) with cache.Register(url)
-      and cache.Get(ctx, url). The v4 extension uses jwkcache.NewCache(ctx, httprc.NewClient())
-      with cache.Register(ctx, url) and cache.Lookup(ctx, url).
+      and cache.Get(ctx, url). The v4 extension uses
+      jwkfetch.NewCache(ctx, httprc.NewClient()) with
+      cache.Register(ctx, url, jwkfetch.WithMinInterval(...)) and cache.Lookup(ctx, url).
     example:
       before: |
         cache := jwk.NewCache(ctx)
         cache.Register(url, jwk.WithMinRefreshInterval(15*time.Minute))
         set, err := cache.Get(ctx, url)
       after: |
-        import "github.com/jwx-go/jwkcache/v4"
-        cache, err := jwkcache.NewCache(ctx, httprc.NewClient())
-        cache.Register(ctx, url)
+        import (
+            "github.com/jwx-go/jwkfetch/v4"
+            "github.com/lestrrat-go/httprc/v3"
+        )
+        cache, err := jwkfetch.NewCache(ctx, httprc.NewClient())
+        _ = cache.Register(ctx, url, jwkfetch.WithMinInterval(15*time.Minute))
         set, err := cache.Lookup(ctx, url)
 
   - id: jwk-autorefresh-removed-v2
@@ -468,7 +474,7 @@ rules:
     package: jwk
     mechanical: false
     v2: AutoRefresh
-    replacement: "github.com/jwx-go/jwkcache/v4"
+    replacement: "github.com/jwx-go/jwkfetch/v4"
     search_patterns:
       - 'jwk\.NewAutoRefresh\('
       - 'jwk\.AutoRefresh\b'
@@ -477,7 +483,8 @@ rules:
       - 'undefined: jwk.NewAutoRefresh'
     note: >
       jwk.AutoRefresh was renamed to jwk.Cache in v3, then moved to
-      github.com/jwx-go/jwkcache/v4 in v4. See jwk-cache-removed-v2 rule.
+      github.com/jwx-go/jwkfetch/v4 in v4. See jwk-cache-removed-v2 rule
+      and MIGRATION.md Recipe 6.
 
   - id: jwk-cacheoption-removed-v2
     kind: removed
@@ -486,7 +493,7 @@ rules:
     v2: CacheOption
     search_patterns:
       - 'CacheOption\b'
-    note: CacheOption removed. Use jwkcache options from github.com/jwx-go/jwkcache/v4.
+    note: CacheOption removed. Use jwkfetch options from github.com/jwx-go/jwkfetch/v4 (see MIGRATION.md Recipe 6).
 
   - id: jwk-resourceoption-removed-v2
     kind: removed
@@ -585,7 +592,8 @@ rules:
       - 'undefined: jwk.SetGlobalFetcher'
     note: >
       jwk.SetGlobalFetcher() is removed. Configure fetching behavior
-      through jwkcache options instead.
+      through jwkfetch.Client / jwkfetch.Cache options in
+      github.com/jwx-go/jwkfetch/v4 instead (see MIGRATION.md Recipe 6).
 
   # ============================================================
   # jws Package
@@ -995,15 +1003,17 @@ rules:
     package: jwk
     mechanical: false
     v2: "Cache (jwk.NewCache, jwk.CachedSet, etc.)"
-    extension_module: "github.com/jwx-go/jwkcache/v4"
+    extension_module: "github.com/jwx-go/jwkfetch/v4"
     search_patterns:
       - 'jwk\.NewCache\('
       - 'jwk\.CachedSet\b'
       - 'jwk\.CachedFetcher\b'
     note: >
-      The JWK caching subsystem moved to github.com/jwx-go/jwkcache/v4.
+      The JWK caching subsystem moved to github.com/jwx-go/jwkfetch/v4, which
+      supersedes both the v2/v3 jwk.Fetch / jwk.Whitelist surface and the
+      standalone v3 jwx-go/jwkcache companion. See MIGRATION.md Recipe 6.
       v2 used jwk.NewCache(ctx)/cache.Register(url)/cache.Get(ctx, url).
-      v4 uses jwkcache.NewCache(ctx, httprc.NewClient())/cache.Register(ctx, url)/cache.Lookup(ctx, url).
+      v4 uses jwkfetch.NewCache(ctx, httprc.NewClient()) / cache.Register(ctx, url, jwkfetch.WithMinInterval(...)) / cache.Lookup(ctx, url).
 
   - id: asmbase64-extension-v2
     kind: moved_to_extension
