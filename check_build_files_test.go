@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -66,4 +67,35 @@ func TestCheckBuildFilesRecursive(t *testing.T) {
 	for _, f := range findings {
 		require.NotContains(t, f.File, "vendor", "vendor/ must not be scanned")
 	}
+}
+
+// TestCheckBuildFilesLongLine verifies that scanFileForRule does not
+// silently skip build files containing a line longer than bufio.Scanner's
+// default 64 KiB cap. A 16 MiB per-line buffer is configured to cover
+// realistic generated/minified content. See review item
+// JWXMIGRATE-20260415151950-047.
+func TestCheckBuildFilesLongLine(t *testing.T) {
+	dir := t.TempDir()
+	workflowDir := filepath.Join(dir, ".github", "workflows")
+	require.NoError(t, os.MkdirAll(workflowDir, 0o755))
+
+	// Embed the build tag in the middle of a ~100 KiB line. The bare
+	// bufio.Scanner default would have dropped this line on ErrTooLong.
+	padding := strings.Repeat("a", 100*1024)
+	body := padding + " jwx_goccy " + padding + "\n"
+	require.NoError(t, os.WriteFile(filepath.Join(workflowDir, "ci.yml"), []byte(body), 0o644))
+
+	rule := CompiledRule{
+		Rule: Rule{
+			ID:           "build-tag-goccy",
+			Mechanical:   true,
+			FilePatterns: []string{"*.yml"},
+		},
+		Patterns: []*regexp.Regexp{regexp.MustCompile(`jwx_goccy`)},
+	}
+
+	findings := checkBuildFiles(dir, []CompiledRule{rule}, CheckOptions{})
+	require.Len(t, findings, 1, "long-line workflow file must still be scanned")
+	require.Equal(t, "build-tag-goccy", findings[0].RuleID)
+	require.Equal(t, filepath.Join(".github", "workflows", "ci.yml"), findings[0].File)
 }

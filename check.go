@@ -12,6 +12,12 @@ import (
 	"strings"
 )
 
+// maxScanBufferSize bounds the per-line buffer for bufio.Scanner in
+// scanFileForRule. The bufio default is 64 KiB, which silently skips any
+// file with a longer line; 16 MiB is large enough to cover generated or
+// minified content users might reasonably ship in their repos.
+const maxScanBufferSize = 16 * 1024 * 1024
+
 // Finding represents a single match of a migration rule against a source file.
 type Finding struct {
 	RuleID        string `json:"rule_id"`
@@ -218,6 +224,7 @@ func checkBuildFiles(dir string, rules []CompiledRule, opts CheckOptions) []Find
 			}
 			ff, scanErr := scanFileForRule(path, rel, r)
 			if scanErr != nil {
+				fmt.Fprintf(os.Stderr, "jwxmigrate: warning: scanning %s for rule %s: %v\n", rel, r.ID, scanErr)
 				continue
 			}
 			findings = append(findings, ff...)
@@ -237,6 +244,7 @@ func scanFileForRule(path, rel string, r *CompiledRule) ([]Finding, error) {
 
 	var findings []Finding
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxScanBufferSize)
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++

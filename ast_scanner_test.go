@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -134,6 +136,60 @@ func TestGoPkgName(t *testing.T) {
 			require.Equal(t, tt.expected, goPkgName(tt.importPath))
 		})
 	}
+}
+
+// TestRegexFallbackLongLine verifies that regexFallback does not silently
+// skip source containing a line longer than bufio.Scanner's default 64 KiB
+// cap. Switching from bufio.Scanner to bytes.Lines removes the cap entirely.
+// See review item JWXMIGRATE-20260415151950-047.
+func TestRegexFallbackLongLine(t *testing.T) {
+	const padLen = 100 * 1024 // well over bufio.Scanner's 64 KiB default
+	padding := strings.Repeat("a", padLen)
+	// Single line, no newline — worst case for the old scanner.
+	src := []byte(padding + " jws.SplitCompact(token) " + padding)
+
+	pf := &ParsedGoFile{
+		RelPath: "long.go",
+		Src:     src,
+	}
+	rule := &CompiledRule{
+		Rule: Rule{
+			ID:         "test-splitcompact",
+			Mechanical: true,
+			Note:       "test rule",
+		},
+		Patterns: []*regexp.Regexp{regexp.MustCompile(`jws\.SplitCompact\(`)},
+	}
+
+	findings := regexFallback(pf, rule)
+	require.Len(t, findings, 1, "regexFallback must not silently drop lines > 64 KiB")
+	require.Equal(t, "test-splitcompact", findings[0].RuleID)
+	require.Equal(t, 1, findings[0].Line)
+	require.Equal(t, "long.go", findings[0].File)
+}
+
+// TestRegexFallbackCRLF verifies that CRLF line endings do not leak a
+// trailing \r into Finding.Text. bytes.Lines yields lines *including* their
+// terminator, so regexFallback must strip both \r and \n to match the
+// behavior bufio.Scanner.Text() used to provide.
+func TestRegexFallbackCRLF(t *testing.T) {
+	src := []byte("package x\r\nvar _ = jws.SplitCompact(token)\r\n")
+	pf := &ParsedGoFile{
+		RelPath: "crlf.go",
+		Src:     src,
+	}
+	rule := &CompiledRule{
+		Rule: Rule{
+			ID:         "test-splitcompact",
+			Mechanical: true,
+		},
+		Patterns: []*regexp.Regexp{regexp.MustCompile(`jws\.SplitCompact\(`)},
+	}
+
+	findings := regexFallback(pf, rule)
+	require.Len(t, findings, 1)
+	require.Equal(t, 2, findings[0].Line)
+	require.NotContains(t, findings[0].Text, "\r", "regexFallback must strip trailing CR from CRLF line endings")
 }
 
 func TestExtractNameFromPattern(t *testing.T) {
