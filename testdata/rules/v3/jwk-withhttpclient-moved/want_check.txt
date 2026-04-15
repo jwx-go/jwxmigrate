@@ -1,0 +1,3 @@
+main.go:11: [jwk-withhttpclient-moved] (manual) jwk.WithHTTPClient(client)
+
+total=1 mechanical=0 manual=1

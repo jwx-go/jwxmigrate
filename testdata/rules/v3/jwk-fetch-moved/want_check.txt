@@ -1,0 +1,3 @@
+main.go:10: [jwk-fetch-moved] (manual) jwk.Fetch(ctx, url)
+
+total=1 mechanical=0 manual=1
