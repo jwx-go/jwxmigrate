@@ -1358,7 +1358,6 @@ rules:
     v4: "github.com/lestrrat-go/option/v3"
     search_patterns:
       - 'lestrrat-go/option/v2'
-      - '\.Value\(\)\.\('
     file_patterns:
       - "go.mod"
     note: >
