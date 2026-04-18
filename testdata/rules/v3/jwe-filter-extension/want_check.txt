@@ -1,0 +1,4 @@
+main.go:5: [jwe-filter-extension] (manual) jwe.HeaderFilter
+main.go:6: [jwe-filter-extension] (manual) jwe.NewHeaderNameFilter("alg", "enc")
+
+total=2 mechanical=0 manual=2

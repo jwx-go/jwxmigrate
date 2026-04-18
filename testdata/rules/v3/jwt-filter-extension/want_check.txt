@@ -1,0 +1,4 @@
+main.go:5: [jwt-filter-extension] (manual) jwt.TokenFilter
+main.go:6: [jwt-filter-extension] (manual) jwt.NewClaimNameFilter("sub", "iss")
+
+total=2 mechanical=0 manual=2

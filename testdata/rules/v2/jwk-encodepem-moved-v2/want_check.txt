@@ -1,0 +1,3 @@
+main.go:6: [jwk-encodepem-moved-v2] (manual) jwk.EncodePEM(k)
+
+total=1 mechanical=0 manual=1

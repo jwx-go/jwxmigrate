@@ -133,15 +133,56 @@ rules:
       - 'jwx\.DecoderSettings\('
     compiler_hints:
       - 'undefined: jwx.DecoderSettings'
+      - 'jwx.Settings() .* used as value'
     note: >
-      jwx.DecoderSettings() is renamed to jwx.Settings(). The function signature
-      is unchanged — it still accepts global options like jwx.WithUseNumber(),
-      which continues to exist. This is a straightforward rename.
+      jwx.DecoderSettings() is renamed to jwx.Settings() and the rewritten
+      signature now returns error (v3 was void). The option surface is
+      unchanged — jwx.WithUseNumber() still applies, and v4 adds
+      jwx.WithBase64Encoder / jwx.WithBase64Decoder on the same entry point.
+      Rename the call, then either check the returned error or discard it with _.
     example:
       before: |
         jwx.DecoderSettings(jwx.WithUseNumber(true))
       after: |
-        jwx.Settings(jwx.WithUseNumber(true))
+        if err := jwx.Settings(jwx.WithUseNumber(true)); err != nil {
+            return err
+        }
+
+  - id: settings-returns-error
+    kind: signature_change
+    package: all
+    mechanical: false
+    v3: Settings
+    v4: Settings
+    v3_signature: "Settings(options ...GlobalOption)"
+    v4_signature: "Settings(options ...GlobalOption) error"
+    search_patterns:
+      - 'jwt\.Settings\('
+      - 'jws\.Settings\('
+      - 'jwe\.Settings\('
+      - 'cert\.Settings\('
+    compiler_hints:
+      - 'jwt.Settings() .* used as value'
+      - 'jws.Settings() .* used as value'
+      - 'jwe.Settings() .* used as value'
+      - 'cert.Settings() .* used as value'
+    note: >
+      jwt.Settings, jws.Settings, jwe.Settings, cert.Settings (and the renamed
+      jwx.Settings — see rename-decodersettings-to-settings) now return error
+      instead of panicking or silently accepting invalid input. Each package
+      validates its own options (size limits, nil encoders, etc.). Wrap the
+      call in an `if err := ...; err != nil` check, or explicitly discard the
+      return value with `_ =`. Extension modules that install a backend in
+      init() should panic on error, matching the house style for Register*
+      failures. jwk.Settings remains void — its options have no validatable
+      state today.
+    example:
+      before: |
+        jwt.Settings(jwt.WithMaxParseInputSize(1 << 20))
+      after: |
+        if err := jwt.Settings(jwt.WithMaxParseInputSize(1 << 20)); err != nil {
+            return err
+        }
 
   # ============================================================
   # All Packages — Interface Method Changes
@@ -320,27 +361,12 @@ rules:
             return err // includes type mismatch errors
         }
 
-  - id: jwk-parsekey-generic
-    kind: signature_change
-    package: jwk
-    mechanical: false
-    v3: ParseKey
-    v4: ParseKey
-    v3_signature: "ParseKey(data []byte, options ...ParseOption) (Key, error)"
-    v4_signature: "ParseKey[T Key](data []byte, options ...ParseOption) (T, error)"
-    search_patterns:
-      - 'jwk\.ParseKey\('
-    compiler_hints:
-      - 'not enough type arguments for jwk.ParseKey'
-    note: >
-      jwk.ParseKey() now takes a type parameter. Use the concrete key type if known,
-      or jwk.Key if not.
-    example:
-      before: |
-        key, err := jwk.ParseKey(data)
-        ecKey, ok := key.(jwk.ECDSAPublicKey)
-      after: |
-        ecKey, err := jwk.ParseKey[jwk.ECDSAPublicKey](data)
+  # jwk.ParseKey is unchanged v3→v4: same non-generic
+  # `ParseKey(data []byte, options ...ParseOption) (Key, error)`.
+  # v4 adds a separate typed helper `ParseKeyAs[T Key]` for callers that
+  # want a concrete key subtype — it is a new API, not a migration target,
+  # so there is no rule here. (A pre-release iteration of v4 had made
+  # ParseKey itself generic; that design was reverted in #1966.)
 
   - id: jwk-register-key-importer
     kind: signature_change
@@ -616,6 +642,195 @@ rules:
         if err != nil {
             return err
         }
+
+  - id: jwk-registerx509decoder-moved
+    kind: moved_to_extension
+    package: jwk
+    mechanical: false
+    v3: RegisterX509Decoder
+    v4: RegisterX509Decoder
+    extension_module: "github.com/lestrrat-go/jwx/v4/jwk/jwkbb"
+    v3_signature: "RegisterX509Decoder(ident any, decoder X509Decoder)"
+    v4_signature: "RegisterX509Decoder[T any](blockType string, decoder X509Decoder[T]) error"
+    search_patterns:
+      - 'jwk\.RegisterX509Decoder\('
+    compiler_hints:
+      - 'undefined: jwk.RegisterX509Decoder'
+    note: >
+      RegisterX509Decoder moved from jwk to the jwk/jwkbb subpackage, gained a
+      type parameter (the decoder's concrete return type), and is now keyed by
+      the PEM block.Type string instead of an opaque ident. It returns error on
+      empty blockType or nil decoder rather than panicking; registering the same
+      blockType twice overwrites. Update the import and call shape together.
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jwk"
+
+        jwk.RegisterX509Decoder(&myType{}, jwk.X509DecodeFunc(func(b *pem.Block) (any, error) {
+            // ...
+        }))
+      after: |
+        import "github.com/lestrrat-go/jwx/v4/jwk/jwkbb"
+
+        _ = jwkbb.RegisterX509Decoder[*myType]("MY BLOCK", jwkbb.X509DecodeFunc[*myType](func(b *pem.Block) (*myType, error) {
+            // ...
+        }))
+
+  - id: jwk-unregisterx509decoder-moved
+    kind: moved_to_extension
+    package: jwk
+    mechanical: false
+    v3: UnregisterX509Decoder
+    v4: UnregisterX509Decoder
+    extension_module: "github.com/lestrrat-go/jwx/v4/jwk/jwkbb"
+    v3_signature: "UnregisterX509Decoder(ident any)"
+    v4_signature: "UnregisterX509Decoder(blockType string)"
+    search_patterns:
+      - 'jwk\.UnregisterX509Decoder\('
+    compiler_hints:
+      - 'undefined: jwk.UnregisterX509Decoder'
+    note: >
+      UnregisterX509Decoder moved from jwk to jwk/jwkbb and is now keyed by the
+      PEM block.Type string that was passed to RegisterX509Decoder.
+    example:
+      before: |
+        jwk.UnregisterX509Decoder(&myType{})
+      after: |
+        jwkbb.UnregisterX509Decoder("MY BLOCK")
+
+  - id: jwk-x509decoder-types-moved
+    kind: moved_to_extension
+    package: jwk
+    mechanical: false
+    v3: "X509Decoder / X509DecodeFunc"
+    v4: "X509Decoder[T] / X509DecodeFunc[T]"
+    extension_module: "github.com/lestrrat-go/jwx/v4/jwk/jwkbb"
+    search_patterns:
+      - 'jwk\.X509Decoder\b'
+      - 'jwk\.X509DecodeFunc\b'
+    compiler_hints:
+      - 'undefined: jwk.X509Decoder'
+      - 'undefined: jwk.X509DecodeFunc'
+    note: >
+      The X509Decoder interface and X509DecodeFunc adapter moved from jwk to
+      jwk/jwkbb and gained a type parameter for the decoder's return type. Any
+      custom decoder implementation must be rewritten as `X509Decoder[T]` /
+      `X509DecodeFunc[T]` in the jwkbb package.
+    example:
+      before: |
+        var _ jwk.X509Decoder = myDecoder{}
+      after: |
+        var _ jwkbb.X509Decoder[*myKey] = myDecoder{}
+
+  - id: jwk-pem-decoder-encoder-removed
+    kind: removed
+    package: jwk
+    mechanical: false
+    v3: "PEMDecoder / PEMDecodeFunc / PEMEncoder / PEMEncodeFunc / NewPEMDecoder / WithPEMDecoder"
+    replacement: "jwk/jwkbb.RegisterX509Decoder"
+    search_patterns:
+      - 'jwk\.PEMDecoder\b'
+      - 'jwk\.PEMDecodeFunc\b'
+      - 'jwk\.PEMEncoder\b'
+      - 'jwk\.PEMEncodeFunc\b'
+      - 'jwk\.NewPEMDecoder\('
+      - 'jwk\.WithPEMDecoder\('
+    compiler_hints:
+      - 'undefined: jwk.PEMDecoder'
+      - 'undefined: jwk.PEMEncoder'
+      - 'undefined: jwk.NewPEMDecoder'
+      - 'undefined: jwk.WithPEMDecoder'
+    note: >
+      The whole PEMDecoder / PEMEncoder plumbing (PEMDecoder, PEMDecodeFunc,
+      PEMEncoder, PEMEncodeFunc, NewPEMDecoder, and the WithPEMDecoder parse
+      option) is removed. Those types existed solely to let callers plug a
+      custom PEM decoder into jwk.Parse; that responsibility now lives in the
+      jwk/jwkbb global X509 decoder registry. Drop any PEMDecoder-based
+      wrapper and register a jwkbb.X509Decoder[T] keyed by PEM block type
+      instead. PEMEncoder never had a caller outside the removed plumbing.
+    example:
+      before: |
+        dec := jwk.NewPEMDecoder()
+        key, _, err := dec.Decode(pemBytes)
+        // or:
+        set, err := jwk.Parse(pemBytes, jwk.WithPEMDecoder(customDec))
+      after: |
+        _ = jwkbb.RegisterX509Decoder[*myKey]("MY BLOCK", jwkbb.X509DecodeFunc[*myKey](func(b *pem.Block) (*myKey, error) {
+            // ...
+        }))
+        set, err := jwk.Parse(pemBytes, jwk.WithX509(true))
+
+  - id: jwk-withpem-to-withx509
+    kind: rename
+    package: jwk
+    mechanical: true
+    v3: WithPEM
+    v4: WithX509
+    search_patterns:
+      - 'jwk\.WithPEM\('
+    compiler_hints:
+      - 'undefined: jwk.WithPEM'
+    note: >
+      jwk.WithPEM was a pre-release alias for jwk.WithX509 and was scheduled
+      for removal. v4 keeps only WithX509. Both mean "input is PEM-framed
+      X.509 data" — the rename is mechanical.
+    example:
+      before: |
+        set, err := jwk.Parse(pemBytes, jwk.WithPEM(true))
+      after: |
+        set, err := jwk.Parse(pemBytes, jwk.WithX509(true))
+
+  - id: jwk-encodepem-moved
+    kind: moved_to_extension
+    package: jwk
+    mechanical: false
+    v3: EncodePEM
+    v4: EncodePEM
+    extension_module: "github.com/lestrrat-go/jwx/v4/jwk/jwkbb"
+    v3_signature: "EncodePEM(v any) ([]byte, error)"
+    v4_signature: "EncodePEM(keys ...any) ([]byte, error)"
+    search_patterns:
+      - 'jwk\.EncodePEM\('
+    compiler_hints:
+      - 'undefined: jwk.EncodePEM'
+    note: >
+      jwk.EncodePEM moved to jwk/jwkbb and takes one or more *raw* keys (not
+      jwk.Key). Unwrap a jwk.Key with jwk.Export[any](key) first, then pass
+      the raw key(s) variadically.
+    example:
+      before: |
+        pemBytes, err := jwk.EncodePEM(key)
+      after: |
+        raw, err := jwk.Export[any](key)
+        if err != nil {
+            return err
+        }
+        pemBytes, err := jwkbb.EncodePEM(raw)
+
+  - id: jwk-pem-function-removed
+    kind: removed
+    package: jwk
+    mechanical: false
+    v3: Pem
+    v4: ""
+    replacement: "jwk/jwkbb.EncodePEM(jwk.ExportAll[any](set)...)"
+    search_patterns:
+      - 'jwk\.Pem\('
+    compiler_hints:
+      - 'undefined: jwk.Pem'
+    note: >
+      jwk.Pem is removed. For a single jwk.Key, unwrap with jwk.Export[any] and
+      call jwkbb.EncodePEM on the raw key. For a jwk.Set, expand with
+      jwk.ExportAll[any](set) and spread variadically into jwkbb.EncodePEM.
+    example:
+      before: |
+        pemBytes, err := jwk.Pem(keyOrSet)
+      after: |
+        raws, err := jwk.ExportAll[any](set)
+        if err != nil {
+            return err
+        }
+        pemBytes, err := jwkbb.EncodePEM(raws...)
 
   # ============================================================
   # jws Package
@@ -1286,6 +1501,197 @@ rules:
       method to the new two-argument signature. jwkfetch.Client and
       jwkfetch.Cache from github.com/jwx-go/jwkfetch/v4 both satisfy the new
       shape out of the box.
+
+  - id: jwt-filter-extension
+    kind: moved_to_extension
+    package: jwt
+    mechanical: false
+    v3: "TokenFilter (jwt.NewClaimNameFilter, jwt.StandardClaimsFilter)"
+    extension_module: "github.com/jwx-go/jwxfilter/v4"
+    search_patterns:
+      - 'jwt\.TokenFilter\b'
+      - 'jwt\.NewClaimNameFilter\('
+      - 'jwt\.StandardClaimsFilter\('
+    compiler_hints:
+      - 'undefined: jwt.TokenFilter'
+      - 'undefined: jwt.NewClaimNameFilter'
+      - 'undefined: jwt.StandardClaimsFilter'
+    note: >
+      The jwt filter surface moved to github.com/jwx-go/jwxfilter/v4/jwtfilter.
+      jwt.TokenFilter (and its three sibling per-package filter interfaces)
+      collapses into the single generic jwxfilter.Filter[T] type.
+      jwt.NewClaimNameFilter(names...) becomes jwtfilter.ByName(names...);
+      jwt.StandardClaimsFilter() becomes jwtfilter.Standard(). Both return
+      jwxfilter.Filter[jwt.Token]. Not mechanical because the interface
+      rename adds a type parameter that downstream code may have referenced.
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jwt"
+        var f jwt.TokenFilter = jwt.NewClaimNameFilter("sub", "iss")
+      after: |
+        import (
+            "github.com/jwx-go/jwxfilter/v4"
+            "github.com/jwx-go/jwxfilter/v4/jwtfilter"
+            "github.com/lestrrat-go/jwx/v4/jwt"
+        )
+        var f jwxfilter.Filter[jwt.Token] = jwtfilter.ByName("sub", "iss")
+
+  - id: jws-filter-extension
+    kind: moved_to_extension
+    package: jws
+    mechanical: false
+    v3: "HeaderFilter (jws.NewHeaderNameFilter, jws.StandardHeadersFilter)"
+    extension_module: "github.com/jwx-go/jwxfilter/v4"
+    search_patterns:
+      - 'jws\.HeaderFilter\b'
+      - 'jws\.NewHeaderNameFilter\('
+      - 'jws\.StandardHeadersFilter\('
+    compiler_hints:
+      - 'undefined: jws.HeaderFilter'
+      - 'undefined: jws.NewHeaderNameFilter'
+      - 'undefined: jws.StandardHeadersFilter'
+    note: >
+      The jws filter surface moved to github.com/jwx-go/jwxfilter/v4/jwsfilter.
+      jws.HeaderFilter collapses into jwxfilter.Filter[jws.Headers].
+      jws.NewHeaderNameFilter(names...) becomes jwsfilter.ByName(names...);
+      jws.StandardHeadersFilter() becomes jwsfilter.Standard().
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jws"
+        filter := jws.NewHeaderNameFilter("alg", "kid")
+      after: |
+        import "github.com/jwx-go/jwxfilter/v4/jwsfilter"
+        filter := jwsfilter.ByName("alg", "kid")
+
+  - id: jwe-filter-extension
+    kind: moved_to_extension
+    package: jwe
+    mechanical: false
+    v3: "HeaderFilter (jwe.NewHeaderNameFilter, jwe.StandardHeadersFilter)"
+    extension_module: "github.com/jwx-go/jwxfilter/v4"
+    search_patterns:
+      - 'jwe\.HeaderFilter\b'
+      - 'jwe\.NewHeaderNameFilter\('
+      - 'jwe\.StandardHeadersFilter\('
+    compiler_hints:
+      - 'undefined: jwe.HeaderFilter'
+      - 'undefined: jwe.NewHeaderNameFilter'
+      - 'undefined: jwe.StandardHeadersFilter'
+    note: >
+      The jwe filter surface moved to github.com/jwx-go/jwxfilter/v4/jwefilter.
+      jwe.HeaderFilter collapses into jwxfilter.Filter[jwe.Headers].
+      jwe.NewHeaderNameFilter(names...) becomes jwefilter.ByName(names...);
+      jwe.StandardHeadersFilter() becomes jwefilter.Standard().
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jwe"
+        filter := jwe.NewHeaderNameFilter("alg", "enc")
+      after: |
+        import "github.com/jwx-go/jwxfilter/v4/jwefilter"
+        filter := jwefilter.ByName("alg", "enc")
+
+  - id: jwk-filter-extension
+    kind: moved_to_extension
+    package: jwk
+    mechanical: false
+    v3: "KeyFilter (jwk.NewFieldNameFilter, jwk.*StandardFieldsFilter)"
+    extension_module: "github.com/jwx-go/jwxfilter/v4"
+    search_patterns:
+      - 'jwk\.KeyFilter\b'
+      - 'jwk\.NewFieldNameFilter\('
+      - 'jwk\.RSAStandardFieldsFilter\('
+      - 'jwk\.ECDSAStandardFieldsFilter\('
+      - 'jwk\.OKPStandardFieldsFilter\('
+      - 'jwk\.SymmetricStandardFieldsFilter\('
+      - 'jwk\.AKPStandardFieldsFilter\('
+    compiler_hints:
+      - 'undefined: jwk.KeyFilter'
+      - 'undefined: jwk.NewFieldNameFilter'
+      - 'undefined: jwk.RSAStandardFieldsFilter'
+      - 'undefined: jwk.ECDSAStandardFieldsFilter'
+      - 'undefined: jwk.OKPStandardFieldsFilter'
+      - 'undefined: jwk.SymmetricStandardFieldsFilter'
+      - 'undefined: jwk.AKPStandardFieldsFilter'
+    note: >
+      The jwk filter surface moved to github.com/jwx-go/jwxfilter/v4/jwkfilter.
+      jwk.KeyFilter collapses into jwxfilter.Filter[jwk.Key].
+      jwk.NewFieldNameFilter(names...) becomes jwkfilter.ByName(names...);
+      the per-key-type constructors rename to jwkfilter.RSAStandard(),
+      ECDSAStandard(), OKPStandard(), SymmetricStandard(), AKPStandard()
+      (drop the "StandardFieldsFilter" suffix).
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jwk"
+        filter := jwk.RSAStandardFieldsFilter()
+      after: |
+        import "github.com/jwx-go/jwxfilter/v4/jwkfilter"
+        filter := jwkfilter.RSAStandard()
+
+  - id: openid-filter-extension
+    kind: moved_to_extension
+    package: openid
+    mechanical: true
+    v3: "openid.StandardClaimsFilter"
+    v4: "openidfilter.Standard"
+    extension_module: "github.com/jwx-go/jwxfilter/v4/openidfilter"
+    search_patterns:
+      - 'openid\.StandardClaimsFilter\('
+    compiler_hints:
+      - 'undefined: openid.StandardClaimsFilter'
+    note: >
+      openid.StandardClaimsFilter() moved to
+      github.com/jwx-go/jwxfilter/v4/openidfilter and is renamed to Standard().
+      Mechanical at the call site (selector rewrite); the import path must be
+      updated too.
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/jwt/openid"
+        filter := openid.StandardClaimsFilter()
+      after: |
+        import "github.com/jwx-go/jwxfilter/v4/openidfilter"
+        filter := openidfilter.Standard()
+
+  - id: transform-package-moved
+    kind: moved_to_extension
+    package: transform
+    mechanical: false
+    v3: "transform (AsMap, Mappable, FilterLogic, Filterable, NameBasedFilter, Apply, Reject)"
+    extension_module: "github.com/jwx-go/jwxfilter/v4"
+    search_patterns:
+      - 'transform\.AsMap\b'
+      - 'transform\.Mappable\b'
+      - 'transform\.FilterLogic\b'
+      - 'transform\.FilterLogicFunc\b'
+      - 'transform\.Filterable\b'
+      - 'transform\.NameBasedFilter\b'
+      - 'transform\.NewNameBasedFilter\b'
+      - 'transform\.Apply\b'
+      - 'transform\.Reject\b'
+      - '"github.com/lestrrat-go/jwx/v3/transform"'
+    compiler_hints:
+      - 'no required module provides package github.com/lestrrat-go/jwx/v4/transform'
+      - 'undefined: transform.AsMap'
+      - 'undefined: transform.Mappable'
+    note: >
+      The transform package is deleted in v4. AsMap and Mappable moved to
+      github.com/jwx-go/jwxfilter/v4 (root package of the companion). The
+      generic filter primitives — FilterLogic, FilterLogicFunc, Filterable,
+      NameBasedFilter, NewNameBasedFilter, Apply, Reject — are no longer
+      part of the public API; the companion keeps equivalents unexported.
+      Consumers that used the primitives directly must migrate to the
+      per-package filter constructors (jwtfilter.ByName, jwsfilter.ByName,
+      jwefilter.ByName, jwkfilter.ByName) instead.
+    example:
+      before: |
+        import "github.com/lestrrat-go/jwx/v3/transform"
+        var m transform.Mappable
+        dst := map[string]any{}
+        _ = transform.AsMap(m, dst)
+      after: |
+        import "github.com/jwx-go/jwxfilter/v4"
+        var m jwxfilter.Mappable
+        dst := map[string]any{}
+        _ = jwxfilter.AsMap(m, dst)
 
   - id: asmbase64-extension
     kind: moved_to_extension

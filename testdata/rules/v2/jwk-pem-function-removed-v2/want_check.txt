@@ -1,0 +1,3 @@
+main.go:6: [jwk-pem-function-removed-v2] (manual) jwk.Pem(k)
+
+total=1 mechanical=0 manual=1
