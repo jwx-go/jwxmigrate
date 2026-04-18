@@ -13,14 +13,31 @@ func check(tok jwt.Token) error {
 		if errors.Is(err, jwt.TokenExpiredError()) {
 			return fmt.Errorf("expired: %w", err)
 		}
+		if errors.Is(err, jwt.InvalidIssuerError()) {
+			return fmt.Errorf("wrong issuer: %w", err)
+		}
+		if errors.Is(err, jwt.InvalidAudienceError()) {
+			return fmt.Errorf("wrong audience: %w", err)
+		}
 		return err
 	}
 	return nil
 }
+
+func parse(data []byte) error {
+	_, err := jwt.Parse(data)
+	if errors.Is(err, jwt.ParseError()) {
+		return fmt.Errorf("parse failed: %w", err)
+	}
+	return err
+}
 -- want_check.txt --
 main.go:12: [jwt-validate-errors-structured] (manual) if errors.Is(err, jwt.TokenExpiredError()) {
+main.go:15: [jwt-validate-errors-structured] (manual) if errors.Is(err, jwt.InvalidIssuerError()) {
+main.go:18: [jwt-validate-errors-structured] (manual) if errors.Is(err, jwt.InvalidAudienceError()) {
+main.go:28: [jwt-validate-errors-structured] (manual) if errors.Is(err, jwt.ParseError()) {
 
-total=1 mechanical=0 manual=1
+total=4 mechanical=0 manual=4
 -- want_fix/main.go --
 package example
 
@@ -36,7 +53,21 @@ func check(tok jwt.Token) error {
 		if errors.Is(err, jwt.TokenExpiredError()) {
 			return fmt.Errorf("expired: %w", err)
 		}
+		if errors.Is(err, jwt.InvalidIssuerError()) {
+			return fmt.Errorf("wrong issuer: %w", err)
+		}
+		if errors.Is(err, jwt.InvalidAudienceError()) {
+			return fmt.Errorf("wrong audience: %w", err)
+		}
 		return err
 	}
 	return nil
+}
+
+func parse(data []byte) error {
+	_, err := jwt.Parse(data)
+	if errors.Is(err, jwt.ParseError()) {
+		return fmt.Errorf("parse failed: %w", err)
+	}
+	return err
 }

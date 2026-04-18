@@ -1211,20 +1211,28 @@ rules:
       - 'jwt\.TokenExpiredError\(\)'
       - 'jwt\.TokenNotYetValidError\(\)'
       - 'jwt\.InvalidIssuedAtError\(\)'
-      - 'errors\.Is\(.*jwt\.(TokenExpired|TokenNotYetValid|InvalidIssuedAt)Error'
+      - 'jwt\.InvalidIssuerError\(\)'
+      - 'jwt\.InvalidAudienceError\(\)'
+      - 'jwt\.ParseError\(\)'
+      - 'errors\.Is\(.*jwt\.(TokenExpired|TokenNotYetValid|InvalidIssuedAt|InvalidIssuer|InvalidAudience|Parse)Error'
     compiler_hints:
       - 'cannot call non-function jwt.TokenExpiredError'
       - 'cannot call non-function jwt.TokenNotYetValidError'
       - 'cannot call non-function jwt.InvalidIssuedAtError'
+      - 'cannot call non-function jwt.InvalidIssuerError'
+      - 'cannot call non-function jwt.InvalidAudienceError'
+      - 'cannot call non-function jwt.ParseError'
     note: >
       jwt.Validate() now collects ALL validation failures instead of stopping at
       the first one, and returns structured error types carrying the claim value,
-      current time, and skew. TokenExpiredError / TokenNotYetValidError /
-      InvalidIssuedAtError are now struct types (not functions returning sentinel
-      errors). Use errors.As (or errors.AsType) to extract a typed error and read
-      its fields. Use errors.Is with a zero-value struct literal to test identity.
-      Code that matched on error strings or called TokenExpiredError() as a
-      function must be rewritten.
+      current time, and skew. The error constructors that v3 exposed as
+      functions are now struct types: TokenExpiredError, TokenNotYetValidError,
+      InvalidIssuedAtError, InvalidIssuerError, InvalidAudienceError, ParseError.
+      Use errors.As (or errors.AsType) to extract a typed error and read its
+      fields. Use errors.Is with a zero-value struct literal to test identity.
+      Code that matched on error strings or called e.g. TokenExpiredError() /
+      InvalidAudienceError() / ParseError() as function-call expressions must
+      be rewritten.
     example:
       before: |
         if err := jwt.Validate(tok); err != nil {
