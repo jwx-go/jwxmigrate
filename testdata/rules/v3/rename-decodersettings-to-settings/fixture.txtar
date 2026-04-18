@@ -1,0 +1,24 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3"
+)
+
+func init() {
+	jwx.DecoderSettings(jwx.WithUseNumber(true))
+}
+-- want_check.txt --
+main.go:8: [rename-decodersettings-to-settings] (mechanical) DecoderSettings
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4"
+)
+
+func init() {
+	jwx.Settings(jwx.WithUseNumber(true))
+}

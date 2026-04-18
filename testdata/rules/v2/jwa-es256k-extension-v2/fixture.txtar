@@ -1,0 +1,25 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jwa"
+)
+
+func algorithm() jwa.SignatureAlgorithm {
+	return jwa.ES256K()
+}
+-- want_check.txt --
+main.go:8: [jwa-es256k-extension-v2] (mechanical) jwa.ES256K()
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	es256k "github.com/jwx-go/es256k/v4"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+)
+
+func algorithm() jwa.SignatureAlgorithm {
+	return es256k.ES256K()
+}

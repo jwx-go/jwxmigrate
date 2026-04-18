@@ -1,3 +1,0 @@
-main.go:10: [remove-withfs-v2] (mechanical) jwt.WithFS(fsys)
-
-total=1 mechanical=1 manual=0

@@ -1,0 +1,28 @@
+-- input/main.go --
+package example
+
+import (
+	"io/fs"
+
+	"github.com/lestrrat-go/jwx/v2/jwt"
+)
+
+func example(fsys fs.FS) {
+	_ = jwt.WithFS(fsys)
+}
+-- want_check.txt --
+main.go:10: [remove-withfs-v2] (mechanical) jwt.WithFS(fsys)
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"io/fs"
+
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+func example(fsys fs.FS) {
+
+}

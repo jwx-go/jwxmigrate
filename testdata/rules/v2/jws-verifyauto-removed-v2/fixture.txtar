@@ -1,0 +1,24 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jws"
+)
+
+func verify(payload []byte) ([]byte, error) {
+	return jws.VerifyAuto(payload)
+}
+-- want_check.txt --
+main.go:8: [jws-verifyauto-removed-v2] (manual) jws.VerifyAuto(payload)
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jws"
+)
+
+func verify(payload []byte) ([]byte, error) {
+	return jws.VerifyAuto(payload)
+}

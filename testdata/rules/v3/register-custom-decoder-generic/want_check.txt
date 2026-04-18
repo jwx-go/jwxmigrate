@@ -1,3 +1,0 @@
-main.go:12: [register-custom-decoder-generic] (manual) jwt.RegisterCustomDecoder("my-field", myDecoder{})
-
-total=1 mechanical=0 manual=1

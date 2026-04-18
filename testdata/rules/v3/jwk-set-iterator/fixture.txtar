@@ -1,0 +1,49 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwk"
+)
+
+// jwk-set-iterator's search patterns target method calls on jwk.Set
+// values. Both set.Len() and set.Key(i) fire here — the scanner resolves
+// the receiver "set" via the parser-populated ast.Object chain back to
+// its declared type (func parameter jwk.Set), without needing go/packages
+// type-checked loading.
+
+func iterate(set jwk.Set) {
+	for i := 0; i < set.Len(); i++ {
+		key, ok := set.Key(i)
+		if !ok {
+			continue
+		}
+		_ = key
+	}
+}
+-- want_check.txt --
+main.go:14: [jwk-set-iterator] (manual) set.Len()
+main.go:15: [jwk-set-iterator] (manual) set.Key(i)
+
+total=2 mechanical=0 manual=2
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+// jwk-set-iterator's search patterns target method calls on jwk.Set
+// values. Both set.Len() and set.Key(i) fire here — the scanner resolves
+// the receiver "set" via the parser-populated ast.Object chain back to
+// its declared type (func parameter jwk.Set), without needing go/packages
+// type-checked loading.
+
+func iterate(set jwk.Set) {
+	for i := 0; i < set.Len(); i++ {
+		key, ok := set.Key(i)
+		if !ok {
+			continue
+		}
+		_ = key
+	}
+}

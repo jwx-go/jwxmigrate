@@ -1,0 +1,36 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwe"
+)
+
+// jwe.WithLegacyHeaderMerging is removed in v4. Realistic use is as an
+// option to jwe.Decrypt or jwe.Encrypt. The rule fires on the call site;
+// the fixer tries fixDeleteStatement, which only succeeds when the call
+// is a standalone statement. Nested in another call, the finding is
+// reported but the surrounding call is left for the user to rewrite.
+
+func decryptStandalone() {
+	_ = jwe.WithLegacyHeaderMerging(true)
+}
+-- want_check.txt --
+main.go:14: [jwe-remove-legacy-header-merging] (mechanical) jwe.WithLegacyHeaderMerging(true)
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwe"
+)
+
+// jwe.WithLegacyHeaderMerging is removed in v4. Realistic use is as an
+// option to jwe.Decrypt or jwe.Encrypt. The rule fires on the call site;
+// the fixer tries fixDeleteStatement, which only succeeds when the call
+// is a standalone statement. Nested in another call, the finding is
+// reported but the surrounding call is left for the user to rewrite.
+
+func decryptStandalone() {
+
+}

@@ -1,0 +1,50 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jws"
+)
+
+// The wildcard pattern `jws\.Is\w+Error\(` matches every IsXxxError
+// family member. Multiple calls in one file test that each is reported
+// independently.
+
+func classify(err error) {
+	if jws.IsVerificationError(err) {
+		return
+	}
+	if jws.IsSignatureError(err) {
+		return
+	}
+	if jws.IsUnsupportedAlgorithmError(err) {
+		return
+	}
+}
+-- want_check.txt --
+main.go:12: [jws-isxxxerror-removed-v2] (manual) jws.IsVerificationError(err)
+main.go:15: [jws-isxxxerror-removed-v2] (manual) jws.IsSignatureError(err)
+main.go:18: [jws-isxxxerror-removed-v2] (manual) jws.IsUnsupportedAlgorithmError(err)
+
+total=3 mechanical=0 manual=3
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jws"
+)
+
+// The wildcard pattern `jws\.Is\w+Error\(` matches every IsXxxError
+// family member. Multiple calls in one file test that each is reported
+// independently.
+
+func classify(err error) {
+	if jws.IsVerificationError(err) {
+		return
+	}
+	if jws.IsSignatureError(err) {
+		return
+	}
+	if jws.IsUnsupportedAlgorithmError(err) {
+		return
+	}
+}

@@ -1,0 +1,16 @@
+-- input/main.go --
+package example
+
+import (
+	_ "github.com/lestrrat-go/jwx/v2/jwk/x25519"
+)
+-- want_check.txt --
+main.go:4: [jwk-x25519-removed-v2] (manual) _ "github.com/lestrrat-go/jwx/v2/jwk/x25519"
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	_ "github.com/lestrrat-go/jwx/v4/jwk/x25519"
+)

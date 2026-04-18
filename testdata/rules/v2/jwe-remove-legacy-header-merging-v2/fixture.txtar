@@ -1,0 +1,24 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jwe"
+)
+
+func decryptStandalone() {
+	_ = jwe.WithLegacyHeaderMerging(true)
+}
+-- want_check.txt --
+main.go:8: [jwe-remove-legacy-header-merging-v2] (mechanical) jwe.WithLegacyHeaderMerging(true)
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwe"
+)
+
+func decryptStandalone() {
+
+}

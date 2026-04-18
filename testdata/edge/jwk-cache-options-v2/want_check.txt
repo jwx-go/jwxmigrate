@@ -1,8 +1,0 @@
-main.go:6: [import-v2-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v2/jwk"
-main.go:16: [jwk-cacheoption-removed-v2] (mechanical) jwk.CacheOption
-main.go:16: [jwk-resourceoption-removed-v2] (mechanical) jwk.ResourceOption
-main.go:16: [jwk-registeroption-removed-v2] (mechanical) jwk.RegisterOption
-main.go:17: [jwk-cache-removed-v2] (manual) jwk.NewCache(ctx, opts...)
-main.go:17: [jwk-cache-extension-v2] (manual) jwk.NewCache(ctx, opts...)
-
-total=6 mechanical=4 manual=2

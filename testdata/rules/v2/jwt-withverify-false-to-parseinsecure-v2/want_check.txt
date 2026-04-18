@@ -1,3 +1,0 @@
-main.go:21: [jwt-withverify-false-to-parseinsecure-v2] (mechanical) jwt.ParseString(data, jwt.WithVerify(false))
-
-total=1 mechanical=1 manual=0

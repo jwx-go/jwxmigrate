@@ -1,0 +1,8 @@
+-- input/Makefile --
+.PHONY: test-pem
+test-pem:
+	go test -tags=jwx_secp256k1_pem ./...
+-- want_check.txt --
+Makefile:3: [build-tag-secp256k1-pem] (mechanical) go test -tags=jwx_secp256k1_pem ./...
+
+total=1 mechanical=1 manual=0

@@ -1,0 +1,29 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwt/openid"
+)
+
+var _ openid.Token
+
+func standard() any {
+	return openid.StandardClaimsFilter()
+}
+-- want_check.txt --
+main.go:10: [openid-filter-extension] (mechanical) openid.StandardClaimsFilter()
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/jwx-go/jwxfilter/v4/openidfilter"
+	"github.com/lestrrat-go/jwx/v4/jwt/openid"
+)
+
+var _ openid.Token
+
+func standard() any {
+	return openidfilter.Standard()
+}

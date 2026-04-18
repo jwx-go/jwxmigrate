@@ -1,0 +1,24 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jwk"
+)
+
+func init() {
+	jwk.SetGlobalFetcher(nil)
+}
+-- want_check.txt --
+main.go:8: [jwk-setglobalfetcher-removed-v2] (mechanical) jwk.SetGlobalFetcher(nil)
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+func init() {
+
+}

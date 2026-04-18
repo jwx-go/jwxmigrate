@@ -1,4 +1,0 @@
-main.go:5: [jws-filter-extension] (manual) jws.HeaderFilter
-main.go:6: [jws-filter-extension] (manual) jws.NewHeaderNameFilter("alg", "kid")
-
-total=2 mechanical=0 manual=2

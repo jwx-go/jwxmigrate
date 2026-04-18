@@ -1,0 +1,8 @@
+-- input/Makefile --
+.PHONY: test
+test:
+	go test -tags=jwx_goccy ./...
+-- want_check.txt --
+Makefile:3: [build-tag-goccy] (mechanical) go test -tags=jwx_goccy ./...
+
+total=1 mechanical=1 manual=0

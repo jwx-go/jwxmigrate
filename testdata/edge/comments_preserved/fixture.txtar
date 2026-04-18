@@ -1,0 +1,43 @@
+-- input/main.go --
+package example
+
+// Package-level doc comment must be preserved verbatim.
+
+import (
+	// Leading comment on the import group.
+	"github.com/lestrrat-go/jwx/v3/jws" // trailing comment
+)
+
+// example demonstrates a rename that must not disturb surrounding comments.
+//
+// Note: this is a multi-line doc comment that must survive the fix.
+func example() {
+	// Inline comment before the declaration.
+	var s jws.Signer2 // end-of-line comment
+	_ = s
+	// Trailing comment inside the function.
+}
+-- want_check.txt --
+main.go:7: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jws"
+main.go:15: [jws-signer2-to-signer] (mechanical) jws.Signer2
+
+total=2 mechanical=2 manual=0
+-- want_fix/main.go --
+package example
+
+// Package-level doc comment must be preserved verbatim.
+
+import (
+	// Leading comment on the import group.
+	"github.com/lestrrat-go/jwx/v4/jws" // trailing comment
+)
+
+// example demonstrates a rename that must not disturb surrounding comments.
+//
+// Note: this is a multi-line doc comment that must survive the fix.
+func example() {
+	// Inline comment before the declaration.
+	var s jws.Signer // end-of-line comment
+	_ = s
+	// Trailing comment inside the function.
+}

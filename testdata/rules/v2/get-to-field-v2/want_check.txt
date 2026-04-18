@@ -1,3 +1,0 @@
-main.go:13: [get-to-field-v2] (manual) key.Get(jwk.AlgorithmKey)
-
-total=1 mechanical=0 manual=1

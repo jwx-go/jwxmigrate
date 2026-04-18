@@ -1,0 +1,35 @@
+-- input/main.go --
+package example
+
+import (
+	"context"
+
+	"github.com/lestrrat-go/jwx/v3/jwk"
+)
+
+func build(ctx context.Context, client any) {
+	cache, _ := jwk.NewCache(ctx, client)
+	_ = cache
+	var set jwk.CachedSet
+	_ = set
+}
+-- want_check.txt --
+main.go:10: [jwk-cache-removed] (manual) jwk.NewCache(ctx, client)
+main.go:12: [jwk-cache-removed] (manual) jwk.CachedSet
+
+total=2 mechanical=0 manual=2
+-- want_fix/main.go --
+package example
+
+import (
+	"context"
+
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+func build(ctx context.Context, client any) {
+	cache, _ := jwk.NewCache(ctx, client)
+	_ = cache
+	var set jwk.CachedSet
+	_ = set
+}

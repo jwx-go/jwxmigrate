@@ -1,5 +1,0 @@
-main.go:12: [jws-isxxxerror-removed-v2] (manual) jws.IsVerificationError(err)
-main.go:15: [jws-isxxxerror-removed-v2] (manual) jws.IsSignatureError(err)
-main.go:18: [jws-isxxxerror-removed-v2] (manual) jws.IsUnsupportedAlgorithmError(err)
-
-total=3 mechanical=0 manual=3

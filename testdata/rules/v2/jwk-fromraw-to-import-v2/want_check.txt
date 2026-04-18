@@ -1,3 +1,0 @@
-main.go:8: [jwk-fromraw-to-import-v2] (manual) jwk.FromRaw(raw)
-
-total=1 mechanical=0 manual=1

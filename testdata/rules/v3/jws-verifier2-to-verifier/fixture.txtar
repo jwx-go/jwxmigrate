@@ -1,0 +1,28 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jws"
+)
+
+type myVerifier struct{}
+
+var _ jws.Verifier2 = myVerifier{}
+
+func (myVerifier) Verify(key any, payload, signature []byte) error { return nil }
+-- want_check.txt --
+main.go:9: [jws-verifier2-to-verifier] (mechanical) jws.Verifier2
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jws"
+)
+
+type myVerifier struct{}
+
+var _ jws.Verifier = myVerifier{}
+
+func (myVerifier) Verify(key any, payload, signature []byte) error { return nil }

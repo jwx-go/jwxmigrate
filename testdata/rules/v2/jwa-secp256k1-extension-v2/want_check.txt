@@ -1,3 +1,0 @@
-main.go:8: [jwa-secp256k1-extension-v2] (mechanical) jwa.Secp256k1()
-
-total=1 mechanical=1 manual=0

@@ -1,3 +1,0 @@
-main.go:18: [jwk-fetcher-interface-shape-change] (manual) jwk.Fetcher
-
-total=1 mechanical=0 manual=1

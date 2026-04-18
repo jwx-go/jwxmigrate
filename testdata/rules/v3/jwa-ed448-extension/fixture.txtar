@@ -1,0 +1,25 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwa"
+)
+
+func curve() jwa.EllipticCurveAlgorithm {
+	return jwa.Ed448()
+}
+-- want_check.txt --
+main.go:8: [jwa-ed448-extension] (mechanical) jwa.Ed448()
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	ed448 "github.com/jwx-go/ed448/v4"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+)
+
+func curve() jwa.EllipticCurveAlgorithm {
+	return ed448.Curve()
+}

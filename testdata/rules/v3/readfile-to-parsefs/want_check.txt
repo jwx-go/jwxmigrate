@@ -1,3 +1,0 @@
-main.go:8: [readfile-to-parsefs] (mechanical) jwt.ReadFile("token.jwt")
-
-total=1 mechanical=1 manual=0

@@ -1,0 +1,30 @@
+-- input/main.go --
+package example
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/lestrrat-go/jwx/v3/jwk"
+)
+
+func fetchKeys(ctx context.Context, url string, client *http.Client) (jwk.Set, error) {
+	return jwk.Fetch(ctx, url, jwk.WithHTTPClient(client))
+}
+-- want_check.txt --
+main.go:11: [jwk-withhttpclient-moved] (manual) jwk.WithHTTPClient(client)
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+func fetchKeys(ctx context.Context, url string, client *http.Client) (jwk.Set, error) {
+	return jwk.Fetch(ctx, url, jwk.WithHTTPClient(client))
+}

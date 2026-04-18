@@ -1,3 +1,0 @@
-go.mod:5: [dep-pkg-errors-removed-v2] (manual) require github.com/pkg/errors v0.9.1
-
-total=1 mechanical=0 manual=1

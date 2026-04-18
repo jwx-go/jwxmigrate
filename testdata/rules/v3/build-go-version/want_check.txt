@@ -1,3 +1,0 @@
-go.mod:3: [build-go-version] (mechanical) go 1.25
-
-total=1 mechanical=1 manual=0

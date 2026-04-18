@@ -1,3 +1,0 @@
-.PHONY: test-es256k
-test-es256k:
-	go test -tags=jwx_es256k ./...

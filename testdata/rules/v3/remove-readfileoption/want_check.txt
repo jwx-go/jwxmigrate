@@ -1,3 +1,0 @@
-main.go:13: [remove-readfileoption] (mechanical) ReadFileOption
-
-total=1 mechanical=1 manual=0

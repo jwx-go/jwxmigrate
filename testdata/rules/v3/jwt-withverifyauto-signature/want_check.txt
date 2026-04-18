@@ -1,3 +1,0 @@
-main.go:9: [jwt-withverifyauto-signature] (manual) jwt.WithVerifyAuto(nil, jwk.WithFetchWhitelist(wl))
-
-total=1 mechanical=0 manual=1

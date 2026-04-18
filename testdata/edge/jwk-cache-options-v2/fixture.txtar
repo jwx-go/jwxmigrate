@@ -1,0 +1,53 @@
+-- input/main.go --
+package example
+
+import (
+	"context"
+
+	"github.com/lestrrat-go/jwx/v2/jwk"
+)
+
+// Realistic v2 jwk cache setup. Covers (in context) the option-type
+// rules that would be trivial stubs as per-rule fixtures:
+//
+//   - jwk-cacheoption-removed-v2    — []jwk.CacheOption parameter
+//   - jwk-resourceoption-removed-v2 — []jwk.ResourceOption parameter
+//   - jwk-registeroption-removed-v2 — []jwk.RegisterOption parameter
+
+func makeCache(ctx context.Context, opts []jwk.CacheOption, resourceOpts []jwk.ResourceOption, regOpts []jwk.RegisterOption) {
+	cache := jwk.NewCache(ctx, opts...)
+	_ = cache
+	_ = resourceOpts
+	_ = regOpts
+}
+-- want_check.txt --
+main.go:6: [import-v2-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v2/jwk"
+main.go:16: [jwk-cacheoption-removed-v2] (mechanical) jwk.CacheOption
+main.go:16: [jwk-resourceoption-removed-v2] (mechanical) jwk.ResourceOption
+main.go:16: [jwk-registeroption-removed-v2] (mechanical) jwk.RegisterOption
+main.go:17: [jwk-cache-removed-v2] (manual) jwk.NewCache(ctx, opts...)
+main.go:17: [jwk-cache-extension-v2] (manual) jwk.NewCache(ctx, opts...)
+
+total=6 mechanical=4 manual=2
+-- want_fix/main.go --
+package example
+
+import (
+	"context"
+
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+// Realistic v2 jwk cache setup. Covers (in context) the option-type
+// rules that would be trivial stubs as per-rule fixtures:
+//
+//   - jwk-cacheoption-removed-v2    — []jwk.CacheOption parameter
+//   - jwk-resourceoption-removed-v2 — []jwk.ResourceOption parameter
+//   - jwk-registeroption-removed-v2 — []jwk.RegisterOption parameter
+
+func makeCache(ctx context.Context, opts []jwk.CacheOption, resourceOpts []jwk.ResourceOption, regOpts []jwk.RegisterOption) {
+	cache := jwk.NewCache(ctx, opts...)
+	_ = cache
+	_ = resourceOpts
+	_ = regOpts
+}

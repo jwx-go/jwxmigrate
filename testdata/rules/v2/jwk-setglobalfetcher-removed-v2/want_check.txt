@@ -1,3 +1,0 @@
-main.go:8: [jwk-setglobalfetcher-removed-v2] (mechanical) jwk.SetGlobalFetcher(nil)
-
-total=1 mechanical=1 manual=0

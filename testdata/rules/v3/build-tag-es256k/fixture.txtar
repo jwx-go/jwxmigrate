@@ -1,0 +1,8 @@
+-- input/Makefile --
+.PHONY: test-es256k
+test-es256k:
+	go test -tags=jwx_es256k ./...
+-- want_check.txt --
+Makefile:3: [build-tag-es256k] (mechanical) go test -tags=jwx_es256k ./...
+
+total=1 mechanical=1 manual=0

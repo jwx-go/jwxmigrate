@@ -1,0 +1,14 @@
+-- input/main.go --
+package example
+
+import (
+	_ "github.com/lestrrat-go/jwx/v3/jws/legacy"
+)
+-- want_check.txt --
+(no findings)
+-- want_fix/main.go --
+package example
+
+import (
+	_ "github.com/lestrrat-go/jwx/v4/jws/legacy"
+)

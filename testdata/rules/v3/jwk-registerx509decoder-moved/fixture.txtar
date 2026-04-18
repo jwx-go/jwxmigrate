@@ -1,0 +1,36 @@
+-- input/main.go --
+package example
+
+import (
+	"encoding/pem"
+
+	"github.com/lestrrat-go/jwx/v3/jwk"
+)
+
+type myKey struct{}
+
+func init() {
+	jwk.RegisterX509Decoder(&myKey{}, jwk.X509DecodeFunc(func(b *pem.Block) (any, error) {
+		return &myKey{}, nil
+	}))
+}
+-- want_check.txt --
+main.go:12: [jwk-registerx509decoder-moved] (manual) jwk.RegisterX509Decoder(&myKey{}, jwk.X509DecodeFunc(func(b *pem.Block) (any, error) { return &myKey{}, nil }))
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"encoding/pem"
+
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+type myKey struct{}
+
+func init() {
+	jwk.RegisterX509Decoder(&myKey{}, jwk.X509DecodeFunc(func(b *pem.Block) (any, error) {
+		return &myKey{}, nil
+	}))
+}

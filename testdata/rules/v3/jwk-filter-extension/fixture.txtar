@@ -1,0 +1,38 @@
+-- input/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v3/jwk"
+
+func filters() []jwk.KeyFilter {
+	return []jwk.KeyFilter{
+		jwk.NewFieldNameFilter("kty", "kid"),
+		jwk.RSAStandardFieldsFilter(),
+		jwk.ECDSAStandardFieldsFilter(),
+		jwk.OKPStandardFieldsFilter(),
+		jwk.SymmetricStandardFieldsFilter(),
+	}
+}
+-- want_check.txt --
+main.go:5: [jwk-filter-extension] (manual) jwk.KeyFilter
+main.go:6: [jwk-filter-extension] (manual) jwk.KeyFilter
+main.go:7: [jwk-filter-extension] (manual) jwk.NewFieldNameFilter("kty", "kid")
+main.go:8: [jwk-filter-extension] (manual) jwk.RSAStandardFieldsFilter()
+main.go:9: [jwk-filter-extension] (manual) jwk.ECDSAStandardFieldsFilter()
+main.go:10: [jwk-filter-extension] (manual) jwk.OKPStandardFieldsFilter()
+main.go:11: [jwk-filter-extension] (manual) jwk.SymmetricStandardFieldsFilter()
+
+total=7 mechanical=0 manual=7
+-- want_fix/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v4/jwk"
+
+func filters() []jwk.KeyFilter {
+	return []jwk.KeyFilter{
+		jwk.NewFieldNameFilter("kty", "kid"),
+		jwk.RSAStandardFieldsFilter(),
+		jwk.ECDSAStandardFieldsFilter(),
+		jwk.OKPStandardFieldsFilter(),
+		jwk.SymmetricStandardFieldsFilter(),
+	}
+}

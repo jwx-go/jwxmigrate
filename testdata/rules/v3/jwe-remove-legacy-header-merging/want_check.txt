@@ -1,3 +1,0 @@
-main.go:14: [jwe-remove-legacy-header-merging] (mechanical) jwe.WithLegacyHeaderMerging(true)
-
-total=1 mechanical=1 manual=0

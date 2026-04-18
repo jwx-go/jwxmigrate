@@ -31,6 +31,47 @@ jwxmigrate is a standalone CLI tool (`package main`). It loads migration rules f
 go test ./...
 ```
 
+## Authoring Rules and Fixtures
+
+A new rule is two files:
+
+1. **Rule entry** in `v3-to-v4.yaml` (or `v2-to-v4.yaml`) — one block matching
+   `schema.yaml`: `id`, `kind`, `package`, `search_patterns`, `note`, etc.
+2. **Fixture** at `testdata/rules/<v2|v3>/<rule-id>/fixture.txtar` — a single
+   [txtar](https://pkg.go.dev/golang.org/x/tools/txtar) archive with sections:
+   - `-- input/<path> --` — one or more Go (or build) files the rule should fire on.
+   - `-- want_check.txt --` — expected golden output from the check pass.
+   - `-- want_fix/<path> --` — expected file contents after `--fix` (omit for
+     non-mechanical rules that have no auto-fix output).
+
+Both `want_check.txt` and `want_fix/*` are auto-generated; seed an empty
+fixture with just the `input/` section and run:
+
+```
+go test -update -run TestRulesFixtures/<migration>/<rule-id> ./...
+```
+
+Review the regenerated `fixture.txtar` diff before committing — `-update`
+accepts whatever the tool produces as the new truth.
+
+### Defaults and overrides
+
+The fixture harness derives sensible defaults from the path:
+
+- `testdata/rules/v2/<rule-id>/` → migration `v2-to-v4`, rule_id = `<rule-id>`.
+- `testdata/rules/v3/<rule-id>/` → migration `v3-to-v4`, rule_id = `<rule-id>`.
+- `testdata/edge/<name>/` → migration `v3-to-v4`, no rule_id filter.
+
+Only drop a `config.yaml` alongside `fixture.txtar` when a fixture needs an
+override: `skip_fix: true`, `mechanical_only: true`, or a non-default
+migration (e.g. v2 edge fixtures).
+
+### Legacy directory layout
+
+Older fixtures used a directory tree (`input/`, `want_check.txt`, `want_fix/`)
+instead of a single txtar archive. The loader still accepts that layout if
+`fixture.txtar` is absent, but new fixtures should use txtar.
+
 ## Branch Policy
 
 | Branch | Purpose |

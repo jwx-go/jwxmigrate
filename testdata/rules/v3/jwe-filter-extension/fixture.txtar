@@ -1,0 +1,21 @@
+-- input/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v3/jwe"
+
+func filters() (jwe.HeaderFilter, jwe.HeaderFilter) {
+	return jwe.NewHeaderNameFilter("alg", "enc"), jwe.StandardHeadersFilter()
+}
+-- want_check.txt --
+main.go:5: [jwe-filter-extension] (manual) jwe.HeaderFilter
+main.go:6: [jwe-filter-extension] (manual) jwe.NewHeaderNameFilter("alg", "enc")
+
+total=2 mechanical=0 manual=2
+-- want_fix/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v4/jwe"
+
+func filters() (jwe.HeaderFilter, jwe.HeaderFilter) {
+	return jwe.NewHeaderNameFilter("alg", "enc"), jwe.StandardHeadersFilter()
+}

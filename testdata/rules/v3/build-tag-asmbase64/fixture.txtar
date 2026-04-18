@@ -1,0 +1,8 @@
+-- input/Makefile --
+.PHONY: test-asm
+test-asm:
+	go test -tags=jwx_asmbase64 ./...
+-- want_check.txt --
+Makefile:3: [build-tag-asmbase64] (mechanical) go test -tags=jwx_asmbase64 ./...
+
+total=1 mechanical=1 manual=0

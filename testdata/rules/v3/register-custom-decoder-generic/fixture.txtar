@@ -1,0 +1,32 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwt"
+)
+
+type myDecoder struct{}
+
+func (myDecoder) Decode(_ []byte) (any, error) { return nil, nil }
+
+func init() {
+	jwt.RegisterCustomDecoder("my-field", myDecoder{})
+}
+-- want_check.txt --
+main.go:12: [register-custom-decoder-generic] (manual) jwt.RegisterCustomDecoder("my-field", myDecoder{})
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+type myDecoder struct{}
+
+func (myDecoder) Decode(_ []byte) (any, error) { return nil, nil }
+
+func init() {
+	jwt.RegisterCustomDecoder("my-field", myDecoder{})
+}

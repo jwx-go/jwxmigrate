@@ -1,0 +1,30 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jwe"
+)
+
+// v2 had DecryptEncryptOption, v4 renamed to EncryptDecryptOption
+// (producer before consumer).
+
+func take(opts ...jwe.DecryptEncryptOption) {
+	_ = opts
+}
+-- want_check.txt --
+main.go:10: [jwe-decryptencryptoption-renamed-v2] (mechanical) jwe.DecryptEncryptOption
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwe"
+)
+
+// v2 had DecryptEncryptOption, v4 renamed to EncryptDecryptOption
+// (producer before consumer).
+
+func take(opts ...jwe.EncryptDecryptOption) {
+	_ = opts
+}

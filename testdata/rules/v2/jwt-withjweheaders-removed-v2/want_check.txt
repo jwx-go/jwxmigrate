@@ -1,3 +1,0 @@
-main.go:8: [jwt-withjweheaders-removed-v2] (mechanical) jwt.WithJweHeaders(nil)
-
-total=1 mechanical=1 manual=0

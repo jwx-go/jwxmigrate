@@ -1,0 +1,104 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jwa"
+	"github.com/lestrrat-go/jwx/v2/jws"
+)
+
+// Realistic v2 legacy signer / verifier registration. Covers the seven
+// factory/adapter rules that are exempt from per-rule fixtures because
+// individual stubs for each symbol would test nothing:
+//
+//   - jws-signerfactory-removed-v2     — jws.SignerFactory   (type reference)
+//   - jws-signerfactoryfn-removed-v2   — jws.SignerFactoryFn(fn)
+//   - jws-signeradapter-removed-v2     — jws.SignerAdapter(v)
+//   - jws-verifierfactory-removed-v2   — jws.VerifierFactory (type reference)
+//   - jws-verifierfactoryfn-removed-v2 — jws.VerifierFactoryFn(fn)
+//   - jws-verifideradapter-removed-v2  — jws.VerifierAdapter(v)
+//   - jws-withlegacysigners-removed-v2 — jws.WithLegacySigners()
+
+type legacySigner struct{}
+
+func (legacySigner) Algorithm() jwa.SignatureAlgorithm { return jwa.RS256 }
+func (legacySigner) Sign([]byte, any) ([]byte, error)  { return nil, nil }
+
+type legacyVerifier struct{}
+
+func (legacyVerifier) Algorithm() jwa.SignatureAlgorithm { return jwa.RS256 }
+func (legacyVerifier) Verify([]byte, []byte, any) error  { return nil }
+
+func registerLegacy() {
+	var factory jws.SignerFactory = jws.SignerFactoryFn(func() (jws.Signer2, error) {
+		return jws.SignerAdapter(legacySigner{}), nil
+	})
+	_ = factory
+
+	var vf jws.VerifierFactory = jws.VerifierFactoryFn(func() (jws.Verifier2, error) {
+		return jws.VerifierAdapter(legacyVerifier{}), nil
+	})
+	_ = vf
+}
+
+func verifyWithLegacy(tok []byte) ([]byte, error) {
+	return jws.Verify(tok, jws.WithLegacySigners())
+}
+-- want_check.txt --
+main.go:4: [import-v2-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v2/jwa"
+main.go:5: [import-v2-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v2/jws"
+main.go:31: [jws-signerfactory-removed-v2] (mechanical) jws.SignerFactory
+main.go:31: [jws-signerfactoryfn-removed-v2] (mechanical) jws.SignerFactoryFn(func() (jws.Signer2, error) { return jws.SignerAdapter(legacySigner{}), nil })
+main.go:31: [jws-signer2-to-signer-v2] (mechanical) jws.Signer2
+main.go:32: [jws-signeradapter-removed-v2] (mechanical) jws.SignerAdapter(legacySigner{})
+main.go:36: [jws-verifierfactory-removed-v2] (mechanical) jws.VerifierFactory
+main.go:36: [jws-verifierfactoryfn-removed-v2] (mechanical) jws.VerifierFactoryFn(func() (jws.Verifier2, error) { return jws.VerifierAdapter(legacyVerifier{}), nil })
+main.go:36: [jws-verifier2-to-verifier-v2] (mechanical) jws.Verifier2
+main.go:37: [jws-verifideradapter-removed-v2] (mechanical) jws.VerifierAdapter(legacyVerifier{})
+main.go:43: [jws-withlegacysigners-removed-v2] (mechanical) jws.WithLegacySigners()
+
+total=11 mechanical=11 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jws"
+)
+
+// Realistic v2 legacy signer / verifier registration. Covers the seven
+// factory/adapter rules that are exempt from per-rule fixtures because
+// individual stubs for each symbol would test nothing:
+//
+//   - jws-signerfactory-removed-v2     — jws.SignerFactory   (type reference)
+//   - jws-signerfactoryfn-removed-v2   — jws.SignerFactoryFn(fn)
+//   - jws-signeradapter-removed-v2     — jws.SignerAdapter(v)
+//   - jws-verifierfactory-removed-v2   — jws.VerifierFactory (type reference)
+//   - jws-verifierfactoryfn-removed-v2 — jws.VerifierFactoryFn(fn)
+//   - jws-verifideradapter-removed-v2  — jws.VerifierAdapter(v)
+//   - jws-withlegacysigners-removed-v2 — jws.WithLegacySigners()
+
+type legacySigner struct{}
+
+func (legacySigner) Algorithm() jwa.SignatureAlgorithm { return jwa.RS256 }
+func (legacySigner) Sign([]byte, any) ([]byte, error)  { return nil, nil }
+
+type legacyVerifier struct{}
+
+func (legacyVerifier) Algorithm() jwa.SignatureAlgorithm { return jwa.RS256 }
+func (legacyVerifier) Verify([]byte, []byte, any) error  { return nil }
+
+func registerLegacy() {
+	var factory jws.SignerFactory = jws.SignerFactoryFn(func() (jws.Signer, error) {
+		return jws.SignerAdapter(legacySigner{}), nil
+	})
+	_ = factory
+
+	var vf jws.VerifierFactory = jws.VerifierFactoryFn(func() (jws.Verifier, error) {
+		return jws.VerifierAdapter(legacyVerifier{}), nil
+	})
+	_ = vf
+}
+
+func verifyWithLegacy(tok []byte) ([]byte, error) {
+	return jws.Verify(tok, jws.WithLegacySigners())
+}

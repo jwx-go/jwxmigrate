@@ -1,0 +1,36 @@
+-- input/main.go --
+package example
+
+import (
+	"reflect"
+
+	"github.com/lestrrat-go/jwx/v3/jwk"
+)
+
+func init() {
+	jwk.RegisterProbeField(reflect.StructField{
+		Name: "MyHint",
+		Type: reflect.TypeOf(""),
+		Tag:  `json:"my_hint"`,
+	})
+}
+-- want_check.txt --
+main.go:10: [jwk-registerprobefield-generic] (manual) jwk.RegisterProbeField(reflect.StructField{ Name: "MyHint", Type: reflect.TypeOf(""), Tag: `json:"my_hint"`, })
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"reflect"
+
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+func init() {
+	jwk.RegisterProbeField(reflect.StructField{
+		Name: "MyHint",
+		Type: reflect.TypeOf(""),
+		Tag:  `json:"my_hint"`,
+	})
+}

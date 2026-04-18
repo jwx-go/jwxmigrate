@@ -1,0 +1,24 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jwe"
+)
+
+func encode(payload []byte, key any) ([]byte, error) {
+	return jwe.JSON(payload, key)
+}
+-- want_check.txt --
+main.go:8: [jwe-json-removed-v2] (manual) jwe.JSON(payload, key)
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwe"
+)
+
+func encode(payload []byte, key any) ([]byte, error) {
+	return jwe.JSON(payload, key)
+}

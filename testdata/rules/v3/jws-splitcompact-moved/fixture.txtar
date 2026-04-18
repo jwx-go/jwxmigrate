@@ -1,0 +1,25 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jws"
+)
+
+func split(buf []byte) ([]byte, []byte, []byte, error) {
+	return jws.SplitCompact(buf)
+}
+-- want_check.txt --
+main.go:8: [jws-splitcompact-moved] (mechanical) jws.SplitCompact(buf)
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jws"
+	"github.com/lestrrat-go/jwx/v4/jws/jwsbb"
+)
+
+func split(buf []byte) ([]byte, []byte, []byte, error) {
+	return jwsbb.SplitCompact(buf)
+}

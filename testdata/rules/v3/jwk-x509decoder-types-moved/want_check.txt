@@ -1,4 +1,0 @@
-main.go:15: [jwk-x509decoder-types-moved] (manual) jwk.X509Decoder
-main.go:17: [jwk-x509decoder-types-moved] (manual) jwk.X509Decoder
-
-total=2 mechanical=0 manual=2
