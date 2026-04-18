@@ -1242,6 +1242,47 @@ rules:
             return err
         }
 
+  - id: jwt-claim-errors-structured
+    kind: behavioral
+    package: jwt
+    mechanical: false
+    v3: "jwt.ClaimNotFoundError() / jwt.ClaimAssignmentFailedError() (sentinel functions)"
+    v4: "jwt.ClaimNotFoundError{} / jwt.ClaimAssignmentFailedError{} / jwt.ClaimTypeMismatchError{} (struct types)"
+    search_patterns:
+      - 'jwt\.ClaimNotFoundError\(\)'
+      - 'jwt\.ClaimAssignmentFailedError\(\)'
+    compiler_hints:
+      - 'cannot call non-function jwt.ClaimNotFoundError'
+      - 'cannot call non-function jwt.ClaimAssignmentFailedError'
+    note: >
+      jwt.ClaimNotFoundError and jwt.ClaimAssignmentFailedError are now
+      struct types instead of functions returning sentinel errors. Use
+      errors.Is with a zero-value struct literal to test identity, or
+      errors.As / errors.AsType to recover the structured fields.
+      jwt.ClaimTypeMismatchError is a new struct type returned by jwt.Get
+      when a claim exists but has a different type than requested. Code
+      that called the error functions or used them with errors.Is as
+      function-call expressions must be rewritten.
+    example:
+      before: |
+        if err := token.Get("sub", &sub); err != nil {
+            if errors.Is(err, jwt.ClaimNotFoundError()) {
+                return fmt.Errorf("no sub claim")
+            }
+            return err
+        }
+      after: |
+        sub, err := jwt.Get[string](token, "sub")
+        if err != nil {
+            if errors.Is(err, jwt.ClaimNotFoundError{}) {
+                return fmt.Errorf("no sub claim")
+            }
+            if mismatch, ok := errors.AsType[jwt.ClaimTypeMismatchError](err); ok {
+                return fmt.Errorf("sub has type %v, wanted %v", mismatch.Got, mismatch.Want)
+            }
+            return err
+        }
+
   - id: jwt-withstrictbase64encoding-default
     kind: behavioral
     package: jwt

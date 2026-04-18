@@ -1,0 +1,51 @@
+-- input/main.go --
+package example
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/lestrrat-go/jwx/v3/jwt"
+)
+
+func lookup(tok jwt.Token) error {
+	var sub string
+	if err := tok.Get("sub", &sub); err != nil {
+		if errors.Is(err, jwt.ClaimNotFoundError()) {
+			return fmt.Errorf("no sub claim")
+		}
+		if errors.Is(err, jwt.ClaimAssignmentFailedError()) {
+			return fmt.Errorf("sub wrong type: %w", err)
+		}
+		return err
+	}
+	return nil
+}
+-- want_check.txt --
+main.go:13: [jwt-claim-errors-structured] (manual) if errors.Is(err, jwt.ClaimNotFoundError()) {
+main.go:16: [jwt-claim-errors-structured] (manual) if errors.Is(err, jwt.ClaimAssignmentFailedError()) {
+
+total=2 mechanical=0 manual=2
+-- want_fix/main.go --
+package example
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+func lookup(tok jwt.Token) error {
+	var sub string
+	if err := tok.Get("sub", &sub); err != nil {
+		if errors.Is(err, jwt.ClaimNotFoundError()) {
+			return fmt.Errorf("no sub claim")
+		}
+		if errors.Is(err, jwt.ClaimAssignmentFailedError()) {
+			return fmt.Errorf("sub wrong type: %w", err)
+		}
+		return err
+	}
+	return nil
+}
