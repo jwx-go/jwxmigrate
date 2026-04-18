@@ -1,0 +1,60 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwa"
+)
+
+// A file that uses symbols from both the es256k and ed448 extension
+// packages. Each moved_to_extension rule rewrites both the selector
+// package and (when applicable) the symbol name, and ensureExtensionImports
+// injects one import per distinct extension module in a single post-pass.
+
+func algorithms() []jwa.SignatureAlgorithm {
+	return []jwa.SignatureAlgorithm{
+		jwa.ES256K(),
+		jwa.EdDSAEd448(),
+	}
+}
+
+func curves() []jwa.EllipticCurveAlgorithm {
+	return []jwa.EllipticCurveAlgorithm{
+		jwa.Secp256k1(),
+		jwa.Ed448(),
+	}
+}
+-- want_check.txt --
+main.go:4: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jwa"
+main.go:14: [jwa-es256k-extension] (mechanical) jwa.ES256K()
+main.go:15: [jwa-eddsaed448-extension] (mechanical) jwa.EdDSAEd448()
+main.go:21: [jwa-secp256k1-extension] (mechanical) jwa.Secp256k1()
+main.go:22: [jwa-ed448-extension] (mechanical) jwa.Ed448()
+
+total=5 mechanical=5 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	ed448 "github.com/jwx-go/ed448/v4"
+	es256k "github.com/jwx-go/es256k/v4"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+)
+
+// A file that uses symbols from both the es256k and ed448 extension
+// packages. Each moved_to_extension rule rewrites both the selector
+// package and (when applicable) the symbol name, and ensureExtensionImports
+// injects one import per distinct extension module in a single post-pass.
+
+func algorithms() []jwa.SignatureAlgorithm {
+	return []jwa.SignatureAlgorithm{
+		es256k.ES256K(),
+		ed448.EdDSAEd448(),
+	}
+}
+
+func curves() []jwa.EllipticCurveAlgorithm {
+	return []jwa.EllipticCurveAlgorithm{
+		es256k.Secp256k1(),
+		ed448.Curve(),
+	}
+}

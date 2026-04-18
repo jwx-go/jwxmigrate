@@ -1,0 +1,38 @@
+-- input/main.go --
+package example
+
+import (
+	"context"
+
+	"github.com/lestrrat-go/jwx/v2/jwk"
+)
+
+// jwk.AutoRefresh was the pre-v2 name for the JWK cache subsystem. Some
+// code may still use it. In v4 the whole subsystem moved to the
+// jwkfetch extension module.
+
+func build(ctx context.Context) {
+	ar := jwk.NewAutoRefresh(ctx)
+	_ = ar
+}
+-- want_check.txt --
+main.go:14: [jwk-autorefresh-removed-v2] (manual) jwk.NewAutoRefresh(ctx)
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"context"
+
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+// jwk.AutoRefresh was the pre-v2 name for the JWK cache subsystem. Some
+// code may still use it. In v4 the whole subsystem moved to the
+// jwkfetch extension module.
+
+func build(ctx context.Context) {
+	ar := jwk.NewAutoRefresh(ctx)
+	_ = ar
+}

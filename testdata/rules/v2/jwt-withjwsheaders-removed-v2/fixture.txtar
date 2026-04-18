@@ -1,0 +1,24 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jwt"
+)
+
+func example() {
+	_ = jwt.WithJwsHeaders(nil)
+}
+-- want_check.txt --
+main.go:8: [jwt-withjwsheaders-removed-v2] (mechanical) jwt.WithJwsHeaders(nil)
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+func example() {
+
+}

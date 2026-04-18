@@ -1,3 +1,0 @@
-main.go:10: [jwk-registerprobefield-generic] (manual) jwk.RegisterProbeField(reflect.StructField{ Name: "MyHint", Type: reflect.TypeOf(""), Tag: `json:"my_hint"`, })
-
-total=1 mechanical=0 manual=1

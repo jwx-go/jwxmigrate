@@ -1,0 +1,27 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwt"
+)
+
+func load() {
+	tok, _ := jwt.ReadFile("token.jwt")
+	_ = tok
+}
+-- want_check.txt --
+main.go:8: [readfile-to-parsefs] (mechanical) jwt.ReadFile("token.jwt")
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwt"
+	"os"
+)
+
+func load() {
+	tok, _ := jwt.ParseFS(os.DirFS("."), "token.jwt")
+	_ = tok
+}

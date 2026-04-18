@@ -1,0 +1,41 @@
+-- input/main.go --
+package example
+
+import (
+	myjwk "github.com/lestrrat-go/jwx/v3/jwk"
+	myjwt "github.com/lestrrat-go/jwx/v3/jwt"
+)
+
+func example(rawKey any) {
+	key, _ := myjwk.Import(rawKey)
+	tok, _ := myjwt.ReadFile("token.jwt")
+	myjwt.RegisterCustomField("my-field", "")
+
+	_ = key
+	_ = tok
+}
+-- want_check.txt --
+main.go:4: [import-v3-to-v4] (mechanical) myjwk "github.com/lestrrat-go/jwx/v3/jwk"
+main.go:5: [import-v3-to-v4] (mechanical) myjwt "github.com/lestrrat-go/jwx/v3/jwt"
+main.go:9: [jwk-import-generic] (manual) myjwk.Import(rawKey)
+main.go:10: [readfile-to-parsefs] (mechanical) myjwt.ReadFile("token.jwt")
+main.go:11: [register-custom-field-generic] (mechanical) myjwt.RegisterCustomField("my-field", "")
+
+total=5 mechanical=4 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	myjwk "github.com/lestrrat-go/jwx/v4/jwk"
+	myjwt "github.com/lestrrat-go/jwx/v4/jwt"
+	"os"
+)
+
+func example(rawKey any) {
+	key, _ := myjwk.Import(rawKey)
+	tok, _ := myjwt.ParseFS(os.DirFS("."), "token.jwt")
+	myjwt.RegisterCustomField("my-field", "")
+
+	_ = key
+	_ = tok
+}

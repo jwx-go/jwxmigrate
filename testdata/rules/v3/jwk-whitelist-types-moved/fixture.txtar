@@ -1,0 +1,47 @@
+-- input/main.go --
+package example
+
+import (
+	"regexp"
+
+	"github.com/lestrrat-go/jwx/v3/jwk"
+)
+
+// Exercises every whitelist identifier the rule lists.
+
+var (
+	_ = jwk.InsecureWhitelist{}
+	_ = jwk.NewMapWhitelist().Add("https://issuer.example/jwks.json")
+	_ jwk.MapWhitelist
+	_ = jwk.RegexpWhitelist{Patterns: []*regexp.Regexp{regexp.MustCompile(`^https://issuer\.example/`)}}
+	_ = jwk.WhitelistFunc(func(url string) bool { return false })
+	_ = jwk.WhitelistError()
+)
+-- want_check.txt --
+main.go:12: [jwk-whitelist-types-moved] (manual) jwk.InsecureWhitelist
+main.go:13: [jwk-whitelist-types-moved] (manual) jwk.NewMapWhitelist()
+main.go:14: [jwk-whitelist-types-moved] (manual) jwk.MapWhitelist
+main.go:15: [jwk-whitelist-types-moved] (manual) jwk.RegexpWhitelist
+main.go:16: [jwk-whitelist-types-moved] (manual) jwk.WhitelistFunc(func(url string) bool { return false })
+main.go:17: [jwk-whitelist-types-moved] (manual) jwk.WhitelistError()
+
+total=6 mechanical=0 manual=6
+-- want_fix/main.go --
+package example
+
+import (
+	"regexp"
+
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+// Exercises every whitelist identifier the rule lists.
+
+var (
+	_ = jwk.InsecureWhitelist{}
+	_ = jwk.NewMapWhitelist().Add("https://issuer.example/jwks.json")
+	_ jwk.MapWhitelist
+	_ = jwk.RegexpWhitelist{Patterns: []*regexp.Regexp{regexp.MustCompile(`^https://issuer\.example/`)}}
+	_ = jwk.WhitelistFunc(func(url string) bool { return false })
+	_ = jwk.WhitelistError()
+)

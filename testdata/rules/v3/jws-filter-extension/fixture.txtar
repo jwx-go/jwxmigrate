@@ -1,0 +1,21 @@
+-- input/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v3/jws"
+
+func filters() (jws.HeaderFilter, jws.HeaderFilter) {
+	return jws.NewHeaderNameFilter("alg", "kid"), jws.StandardHeadersFilter()
+}
+-- want_check.txt --
+main.go:5: [jws-filter-extension] (manual) jws.HeaderFilter
+main.go:6: [jws-filter-extension] (manual) jws.NewHeaderNameFilter("alg", "kid")
+
+total=2 mechanical=0 manual=2
+-- want_fix/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v4/jws"
+
+func filters() (jws.HeaderFilter, jws.HeaderFilter) {
+	return jws.NewHeaderNameFilter("alg", "kid"), jws.StandardHeadersFilter()
+}

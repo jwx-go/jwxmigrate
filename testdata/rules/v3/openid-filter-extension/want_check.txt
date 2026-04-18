@@ -1,3 +1,0 @@
-main.go:10: [openid-filter-extension] (mechanical) openid.StandardClaimsFilter()
-
-total=1 mechanical=1 manual=0

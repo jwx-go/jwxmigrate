@@ -1,3 +1,0 @@
-main.go:10: [register-custom-field-generic-v2] (mechanical) jwt.RegisterCustomField("my-timestamp", time.Time{})
-
-total=1 mechanical=1 manual=0

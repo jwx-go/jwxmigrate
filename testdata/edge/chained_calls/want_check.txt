@@ -1,4 +1,0 @@
-main.go:4: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jwt"
-main.go:12: [readfile-to-parsefs] (mechanical) jwt.ReadFile("token.jwt")
-
-total=2 mechanical=2 manual=0

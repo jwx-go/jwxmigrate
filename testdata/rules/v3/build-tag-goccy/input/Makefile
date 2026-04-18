@@ -1,3 +1,0 @@
-.PHONY: test
-test:
-	go test -tags=jwx_goccy ./...

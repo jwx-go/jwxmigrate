@@ -1,4 +1,0 @@
-main.go:10: [jwk-cache-removed] (manual) jwk.NewCache(ctx, client)
-main.go:12: [jwk-cache-removed] (manual) jwk.CachedSet
-
-total=2 mechanical=0 manual=2

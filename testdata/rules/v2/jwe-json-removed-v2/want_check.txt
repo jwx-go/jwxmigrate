@@ -1,3 +1,0 @@
-main.go:8: [jwe-json-removed-v2] (manual) jwe.JSON(payload, key)
-
-total=1 mechanical=0 manual=1

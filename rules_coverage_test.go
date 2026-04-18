@@ -161,7 +161,17 @@ func listFixtureDirs(t *testing.T, root string) map[string]bool {
 	require.NoError(t, err)
 	m := make(map[string]bool, len(entries))
 	for _, e := range entries {
-		if e.IsDir() {
+		if !e.IsDir() {
+			continue
+		}
+		// A fixture dir counts as present if it contains either the
+		// legacy input/ subdir or a fixture.txtar archive.
+		fixtureDir := filepath.Join(root, e.Name())
+		if _, err := os.Stat(filepath.Join(fixtureDir, "fixture.txtar")); err == nil {
+			m[e.Name()] = true
+			continue
+		}
+		if info, err := os.Stat(filepath.Join(fixtureDir, "input")); err == nil && info.IsDir() {
 			m[e.Name()] = true
 		}
 	}

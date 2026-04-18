@@ -1,0 +1,10 @@
+-- input/go.mod --
+module example
+
+go 1.20
+
+require github.com/lestrrat-go/blackmagic v1.0.2
+-- want_check.txt --
+go.mod:5: [dep-blackmagic-removed-v2] (mechanical) require github.com/lestrrat-go/blackmagic v1.0.2
+
+total=1 mechanical=1 manual=0

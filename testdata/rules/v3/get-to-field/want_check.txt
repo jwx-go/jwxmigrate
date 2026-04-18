@@ -1,3 +1,0 @@
-main.go:15: [get-to-field] (manual) tok.Get(jwt.SubjectKey, &sub)
-
-total=1 mechanical=0 manual=1

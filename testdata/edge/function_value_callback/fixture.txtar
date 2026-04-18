@@ -1,0 +1,32 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwk"
+)
+
+// Passing a v3 function as a value (not calling it) exercises the
+// SelectorExpr matcher path independently of CallExpr.
+
+func example() {
+	f := jwk.Import
+	_ = f
+}
+-- want_check.txt --
+main.go:4: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jwk"
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+// Passing a v3 function as a value (not calling it) exercises the
+// SelectorExpr matcher path independently of CallExpr.
+
+func example() {
+	f := jwk.Import
+	_ = f
+}

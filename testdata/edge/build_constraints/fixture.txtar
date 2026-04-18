@@ -1,0 +1,31 @@
+-- input/main.go --
+//go:build !windows
+
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jws"
+)
+
+// A file with a build constraint should still be scanned and fixed; the
+// constraint must be preserved verbatim through the gofmt pass.
+
+var _ jws.Signer2 = nil
+-- want_check.txt --
+main.go:6: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jws"
+main.go:12: [jws-signer2-to-signer] (mechanical) jws.Signer2
+
+total=2 mechanical=2 manual=0
+-- want_fix/main.go --
+//go:build !windows
+
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jws"
+)
+
+// A file with a build constraint should still be scanned and fixed; the
+// constraint must be preserved verbatim through the gofmt pass.
+
+var _ jws.Signer = nil

@@ -1,3 +1,0 @@
-.PHONY: test-pem
-test-pem:
-	go test -tags=jwx_secp256k1_pem ./...

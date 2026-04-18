@@ -1,0 +1,24 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jwt"
+)
+
+func example() {
+	_ = jwt.WithKeySetProvider(nil)
+}
+-- want_check.txt --
+main.go:8: [jwt-withkeysetprovider-removed-v2] (manual) jwt.WithKeySetProvider(nil)
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+func example() {
+	_ = jwt.WithKeySetProvider(nil)
+}

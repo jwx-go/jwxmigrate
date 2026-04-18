@@ -1,0 +1,40 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwt"
+)
+
+// Multi-return destructuring forms must still match signature_change rules.
+
+func example(rawKey any) {
+	tok, _ := jwt.ReadFile("token.jwt")
+	key, err := jwk.Import(rawKey)
+	_, _ = tok, err
+	_ = key
+}
+-- want_check.txt --
+main.go:4: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jwk"
+main.go:5: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jwt"
+main.go:11: [readfile-to-parsefs] (mechanical) jwt.ReadFile("token.jwt")
+main.go:12: [jwk-import-generic] (manual) jwk.Import(rawKey)
+
+total=4 mechanical=3 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
+	"os"
+)
+
+// Multi-return destructuring forms must still match signature_change rules.
+
+func example(rawKey any) {
+	tok, _ := jwt.ParseFS(os.DirFS("."), "token.jwt")
+	key, err := jwk.Import(rawKey)
+	_, _ = tok, err
+	_ = key
+}

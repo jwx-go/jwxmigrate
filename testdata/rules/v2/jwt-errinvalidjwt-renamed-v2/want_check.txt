@@ -1,3 +1,0 @@
-main.go:16: [jwt-errinvalidjwt-renamed-v2] (manual) jwt.ErrInvalidJWT
-
-total=1 mechanical=0 manual=1

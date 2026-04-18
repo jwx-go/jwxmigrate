@@ -1,0 +1,10 @@
+-- input/go.mod --
+module example
+
+go 1.26
+
+require github.com/goccy/go-json v0.10.3
+-- want_check.txt --
+go.mod:5: [dep-goccy-removed] (mechanical) require github.com/goccy/go-json v0.10.3
+
+total=1 mechanical=1 manual=0

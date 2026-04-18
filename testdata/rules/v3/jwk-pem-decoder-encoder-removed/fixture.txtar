@@ -1,0 +1,25 @@
+-- input/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v3/jwk"
+
+func parsePEM(data []byte) (jwk.Set, error) {
+	dec := jwk.NewPEMDecoder()
+	_ = dec
+	return jwk.Parse(data, jwk.WithPEMDecoder(nil))
+}
+-- want_check.txt --
+main.go:6: [jwk-pem-decoder-encoder-removed] (manual) jwk.NewPEMDecoder()
+main.go:8: [jwk-pem-decoder-encoder-removed] (manual) jwk.WithPEMDecoder(nil)
+
+total=2 mechanical=0 manual=2
+-- want_fix/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v4/jwk"
+
+func parsePEM(data []byte) (jwk.Set, error) {
+	dec := jwk.NewPEMDecoder()
+	_ = dec
+	return jwk.Parse(data, jwk.WithPEMDecoder(nil))
+}

@@ -1,3 +1,0 @@
-main.go:14: [jwk-autorefresh-removed-v2] (manual) jwk.NewAutoRefresh(ctx)
-
-total=1 mechanical=0 manual=1

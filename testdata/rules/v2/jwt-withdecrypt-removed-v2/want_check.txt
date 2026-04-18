@@ -1,3 +1,0 @@
-main.go:8: [jwt-withdecrypt-removed-v2] (manual) jwt.WithDecrypt(key)
-
-total=1 mechanical=0 manual=1

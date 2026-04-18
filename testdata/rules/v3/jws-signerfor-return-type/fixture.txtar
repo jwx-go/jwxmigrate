@@ -1,0 +1,26 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jws"
+)
+
+func makeSigner() (jws.Signer2, error) {
+	return jws.SignerFor(jwa.RS256())
+}
+-- want_check.txt --
+main.go:9: [jws-signerfor-return-type] (mechanical) jws.SignerFor(jwa.RS256())
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jws"
+)
+
+func makeSigner() (jws.Signer, error) {
+	return jws.SignerFor(jwa.RS256())
+}

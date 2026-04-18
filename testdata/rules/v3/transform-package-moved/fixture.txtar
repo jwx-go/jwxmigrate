@@ -1,0 +1,23 @@
+-- input/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v3/transform"
+
+func useTransform(m transform.Mappable) error {
+	dst := map[string]any{}
+	return transform.AsMap(m, dst)
+}
+-- want_check.txt --
+main.go:5: [transform-package-moved] (manual) transform.Mappable
+main.go:7: [transform-package-moved] (manual) transform.AsMap(m, dst)
+
+total=2 mechanical=0 manual=2
+-- want_fix/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v4/transform"
+
+func useTransform(m transform.Mappable) error {
+	dst := map[string]any{}
+	return transform.AsMap(m, dst)
+}

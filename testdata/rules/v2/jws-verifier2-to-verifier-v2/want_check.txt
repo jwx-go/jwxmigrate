@@ -1,3 +1,0 @@
-main.go:9: [jws-verifier2-to-verifier-v2] (mechanical) jws.Verifier2
-
-total=1 mechanical=1 manual=0

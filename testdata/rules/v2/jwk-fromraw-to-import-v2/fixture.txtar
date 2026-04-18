@@ -1,0 +1,26 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jwk"
+)
+
+func example(raw any) {
+	key, _ := jwk.FromRaw(raw)
+	_ = key
+}
+-- want_check.txt --
+main.go:8: [jwk-fromraw-to-import-v2] (manual) jwk.FromRaw(raw)
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+func example(raw any) {
+	key, _ := jwk.FromRaw(raw)
+	_ = key
+}

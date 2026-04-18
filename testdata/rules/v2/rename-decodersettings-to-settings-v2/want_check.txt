@@ -1,3 +1,0 @@
-main.go:8: [rename-decodersettings-to-settings-v2] (mechanical) DecoderSettings
-
-total=1 mechanical=1 manual=0

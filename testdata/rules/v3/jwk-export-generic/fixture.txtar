@@ -1,0 +1,30 @@
+-- input/main.go --
+package example
+
+import (
+	"crypto/rsa"
+
+	"github.com/lestrrat-go/jwx/v3/jwk"
+)
+
+func export(key jwk.Key) error {
+	var raw rsa.PrivateKey
+	return jwk.Export(key, &raw)
+}
+-- want_check.txt --
+main.go:11: [jwk-export-generic] (manual) jwk.Export(key, &raw)
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"crypto/rsa"
+
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+func export(key jwk.Key) error {
+	var raw rsa.PrivateKey
+	return jwk.Export(key, &raw)
+}

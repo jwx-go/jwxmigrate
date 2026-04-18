@@ -1,3 +1,0 @@
-main.go:6: [jwk-withpem-to-withx509] (mechanical) WithPEM
-
-total=1 mechanical=1 manual=0

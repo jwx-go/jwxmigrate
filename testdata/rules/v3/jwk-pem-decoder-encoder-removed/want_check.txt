@@ -1,4 +1,0 @@
-main.go:6: [jwk-pem-decoder-encoder-removed] (manual) jwk.NewPEMDecoder()
-main.go:8: [jwk-pem-decoder-encoder-removed] (manual) jwk.WithPEMDecoder(nil)
-
-total=2 mechanical=0 manual=2

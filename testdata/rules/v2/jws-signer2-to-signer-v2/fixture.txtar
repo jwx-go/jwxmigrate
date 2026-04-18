@@ -1,0 +1,28 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jws"
+)
+
+type mySigner struct{}
+
+var _ jws.Signer2 = mySigner{}
+
+func (mySigner) Sign(key any, payload []byte) ([]byte, error) { return nil, nil }
+-- want_check.txt --
+main.go:9: [jws-signer2-to-signer-v2] (mechanical) jws.Signer2
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jws"
+)
+
+type mySigner struct{}
+
+var _ jws.Signer = mySigner{}
+
+func (mySigner) Sign(key any, payload []byte) ([]byte, error) { return nil, nil }

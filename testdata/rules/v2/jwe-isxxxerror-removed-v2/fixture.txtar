@@ -1,0 +1,35 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jwe"
+)
+
+func classify(err error) {
+	if jwe.IsDecryptError(err) {
+		return
+	}
+	if jwe.IsEncryptError(err) {
+		return
+	}
+}
+-- want_check.txt --
+main.go:8: [jwe-isxxxerror-removed-v2] (manual) jwe.IsDecryptError(err)
+main.go:11: [jwe-isxxxerror-removed-v2] (manual) jwe.IsEncryptError(err)
+
+total=2 mechanical=0 manual=2
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwe"
+)
+
+func classify(err error) {
+	if jwe.IsDecryptError(err) {
+		return
+	}
+	if jwe.IsEncryptError(err) {
+		return
+	}
+}

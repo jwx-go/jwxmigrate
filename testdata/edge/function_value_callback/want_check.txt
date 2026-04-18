@@ -1,3 +1,0 @@
-main.go:4: [import-v3-to-v4] (mechanical) "github.com/lestrrat-go/jwx/v3/jwk"
-
-total=1 mechanical=1 manual=0

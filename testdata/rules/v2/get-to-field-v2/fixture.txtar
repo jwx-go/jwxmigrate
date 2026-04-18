@@ -1,0 +1,34 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jwk"
+)
+
+// v2 .Get(name) returned (interface{}, error) — different shape from v3's
+// .Get(name, &dst) error. The rule fires on any .Get( method call; without
+// go/packages type-checked loading the matcher doesn't distinguish
+// receivers, so a realistic single-call fixture is enough.
+
+func algorithm(key jwk.Key) (any, error) {
+	return key.Get(jwk.AlgorithmKey)
+}
+-- want_check.txt --
+main.go:13: [get-to-field-v2] (manual) key.Get(jwk.AlgorithmKey)
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+// v2 .Get(name) returned (interface{}, error) — different shape from v3's
+// .Get(name, &dst) error. The rule fires on any .Get( method call; without
+// go/packages type-checked loading the matcher doesn't distinguish
+// receivers, so a realistic single-call fixture is enough.
+
+func algorithm(key jwk.Key) (any, error) {
+	return key.Get(jwk.AlgorithmKey)
+}

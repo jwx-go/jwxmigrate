@@ -1,3 +1,0 @@
-main.go:8: [jwa-es256k-extension-v2] (mechanical) jwa.ES256K()
-
-total=1 mechanical=1 manual=0

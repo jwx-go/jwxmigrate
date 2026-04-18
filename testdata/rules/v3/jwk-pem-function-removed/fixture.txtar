@@ -1,0 +1,20 @@
+-- input/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v3/jwk"
+
+func emit(k jwk.Key) ([]byte, error) {
+	return jwk.Pem(k)
+}
+-- want_check.txt --
+main.go:6: [jwk-pem-function-removed] (manual) jwk.Pem(k)
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v4/jwk"
+
+func emit(k jwk.Key) ([]byte, error) {
+	return jwk.Pem(k)
+}

@@ -1,0 +1,24 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jws"
+)
+
+func example() {
+	_ = jws.WithPayloadSigner(nil)
+}
+-- want_check.txt --
+main.go:8: [jws-withpayloadsigner-removed-v2] (manual) jws.WithPayloadSigner(nil)
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jws"
+)
+
+func example() {
+	_ = jws.WithPayloadSigner(nil)
+}

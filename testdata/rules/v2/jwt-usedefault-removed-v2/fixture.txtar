@@ -1,0 +1,26 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jwt"
+)
+
+func parseDefault(data []byte, set jwk.Set) (jwt.Token, error) {
+	return jwt.Parse(data, jwt.WithKeySet(set), jwt.UseDefault(true))
+}
+-- want_check.txt --
+main.go:9: [jwt-usedefault-removed-v2] (manual) jwt.UseDefault(true)
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+func parseDefault(data []byte, set jwk.Set) (jwt.Token, error) {
+	return jwt.Parse(data, jwt.WithKeySet(set), jwt.UseDefault(true))
+}

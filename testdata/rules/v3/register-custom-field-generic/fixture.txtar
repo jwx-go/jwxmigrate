@@ -1,0 +1,31 @@
+-- input/main.go --
+package example
+
+import (
+	"time"
+
+	"github.com/lestrrat-go/jwx/v3/jwt"
+)
+
+func init() {
+	jwt.RegisterCustomField("my-timestamp", time.Time{})
+	jwt.RegisterCustomField("my-duration", time.Duration(0))
+}
+-- want_check.txt --
+main.go:10: [register-custom-field-generic] (mechanical) jwt.RegisterCustomField("my-timestamp", time.Time{})
+main.go:11: [register-custom-field-generic] (mechanical) jwt.RegisterCustomField("my-duration", time.Duration(0))
+
+total=2 mechanical=2 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	"time"
+
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+func init() {
+	jwt.RegisterCustomField("my-timestamp", time.Time{})
+	jwt.RegisterCustomField("my-duration", time.Duration(0))
+}

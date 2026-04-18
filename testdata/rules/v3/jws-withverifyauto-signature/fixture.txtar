@@ -1,0 +1,26 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jws"
+)
+
+func verify(signed []byte, wl jwk.Whitelist) ([]byte, error) {
+	return jws.Verify(signed, jws.WithVerifyAuto(nil, jwk.WithFetchWhitelist(wl)))
+}
+-- want_check.txt --
+main.go:9: [jws-withverifyauto-signature] (manual) jws.WithVerifyAuto(nil, jwk.WithFetchWhitelist(wl))
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
+)
+
+func verify(signed []byte, wl jwk.Whitelist) ([]byte, error) {
+	return jws.Verify(signed, jws.WithVerifyAuto(nil, jwk.WithFetchWhitelist(wl)))
+}

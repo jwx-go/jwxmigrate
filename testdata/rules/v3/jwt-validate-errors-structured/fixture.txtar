@@ -1,0 +1,42 @@
+-- input/main.go --
+package example
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/lestrrat-go/jwx/v3/jwt"
+)
+
+func check(tok jwt.Token) error {
+	if err := jwt.Validate(tok); err != nil {
+		if errors.Is(err, jwt.TokenExpiredError()) {
+			return fmt.Errorf("expired: %w", err)
+		}
+		return err
+	}
+	return nil
+}
+-- want_check.txt --
+main.go:12: [jwt-validate-errors-structured] (manual) if errors.Is(err, jwt.TokenExpiredError()) {
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+func check(tok jwt.Token) error {
+	if err := jwt.Validate(tok); err != nil {
+		if errors.Is(err, jwt.TokenExpiredError()) {
+			return fmt.Errorf("expired: %w", err)
+		}
+		return err
+	}
+	return nil
+}
