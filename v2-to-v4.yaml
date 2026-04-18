@@ -129,10 +129,46 @@ rules:
       - 'jwx\.DecoderSettings\('
     compiler_hints:
       - 'undefined: jwx.DecoderSettings'
+      - 'jwx.Settings() .* used as value'
     note: >
-      jwx.DecoderSettings() is renamed to jwx.Settings(). The function
-      signature is unchanged — it still accepts global options like
-      jwx.WithUseNumber(), which continues to exist. Straightforward rename.
+      jwx.DecoderSettings() is renamed to jwx.Settings() and the signature now
+      returns error (v2 was void). The option surface is unchanged —
+      jwx.WithUseNumber() still applies, and v4 adds jwx.WithBase64Encoder /
+      jwx.WithBase64Decoder on the same entry point. Rename the call, then
+      either check the returned error or discard it with _.
+
+  - id: settings-returns-error-v2
+    kind: signature_change
+    package: all
+    mechanical: false
+    v2: Settings
+    v4: Settings
+    v2_signature: "Settings(options ...GlobalOption)"
+    v4_signature: "Settings(options ...GlobalOption) error"
+    search_patterns:
+      - 'jwt\.Settings\('
+      - 'jws\.Settings\('
+      - 'jwe\.Settings\('
+      - 'cert\.Settings\('
+    compiler_hints:
+      - 'jwt.Settings() .* used as value'
+      - 'jws.Settings() .* used as value'
+      - 'jwe.Settings() .* used as value'
+      - 'cert.Settings() .* used as value'
+    note: >
+      jwt.Settings, jws.Settings, jwe.Settings, cert.Settings (and the renamed
+      jwx.Settings — see rename-decodersettings-to-settings-v2) now return
+      error instead of panicking or silently accepting invalid input. Each
+      package validates its own options (size limits, nil encoders, etc.).
+      Wrap the call in an `if err := ...; err != nil` check, or explicitly
+      discard the return value with `_ =`. jwk.Settings remains void.
+    example:
+      before: |
+        jwt.Settings(jwt.WithMaxParseInputSize(1 << 20))
+      after: |
+        if err := jwt.Settings(jwt.WithMaxParseInputSize(1 << 20)); err != nil {
+            return err
+        }
 
   # ============================================================
   # All Packages — Interface Method Changes
@@ -397,21 +433,10 @@ rules:
       jwk.Import() now takes a type parameter specifying the expected key type.
       Use jwk.Key as T if you don't know the concrete type.
 
-  - id: jwk-parsekey-generic-v2
-    kind: signature_change
-    package: jwk
-    mechanical: false
-    v2: ParseKey
-    v4: ParseKey
-    v2_signature: "ParseKey(data []byte, options ...ParseOption) (Key, error)"
-    v4_signature: "ParseKey[T Key](data []byte, options ...ParseOption) (T, error)"
-    search_patterns:
-      - 'jwk\.ParseKey\('
-    compiler_hints:
-      - 'not enough type arguments for jwk.ParseKey'
-    note: >
-      jwk.ParseKey() now takes a type parameter. Use the concrete key type if known,
-      or jwk.Key if not.
+  # jwk.ParseKey is unchanged v2→v4: same non-generic
+  # `ParseKey(data []byte, options ...ParseOption) (Key, error)`.
+  # v4 adds `ParseKeyAs[T Key]` as a separate typed helper (new API,
+  # not a migration target).
 
   - id: jwk-register-key-importer-v2
     kind: signature_change
@@ -594,6 +619,76 @@ rules:
       jwk.SetGlobalFetcher() is removed. Configure fetching behavior
       through jwkfetch.Client / jwkfetch.Cache options in
       github.com/jwx-go/jwkfetch/v4 instead (see MIGRATION.md Recipe 6).
+
+  - id: jwk-withpem-to-withx509-v2
+    kind: rename
+    package: jwk
+    mechanical: true
+    v2: WithPEM
+    v4: WithX509
+    search_patterns:
+      - 'jwk\.WithPEM\('
+    compiler_hints:
+      - 'undefined: jwk.WithPEM'
+    note: >
+      v2's jwk.WithPEM parse option is renamed to jwk.WithX509 in v4. Same
+      meaning ("input is PEM-framed X.509 data"). Mechanical rename.
+    example:
+      before: |
+        set, err := jwk.Parse(pemBytes, jwk.WithPEM(true))
+      after: |
+        set, err := jwk.Parse(pemBytes, jwk.WithX509(true))
+
+  - id: jwk-encodepem-moved-v2
+    kind: moved_to_extension
+    package: jwk
+    mechanical: false
+    v2: EncodePEM
+    v4: EncodePEM
+    extension_module: "github.com/lestrrat-go/jwx/v4/jwk/jwkbb"
+    v2_signature: "EncodePEM(v interface{}) ([]byte, error)"
+    v4_signature: "EncodePEM(keys ...any) ([]byte, error)"
+    search_patterns:
+      - 'jwk\.EncodePEM\('
+    compiler_hints:
+      - 'undefined: jwk.EncodePEM'
+    note: >
+      jwk.EncodePEM moved to jwk/jwkbb and now accepts *raw* keys variadically
+      (not jwk.Key). Unwrap a jwk.Key with jwk.Export[any](key) first.
+    example:
+      before: |
+        pemBytes, err := jwk.EncodePEM(key)
+      after: |
+        raw, err := jwk.Export[any](key)
+        if err != nil {
+            return err
+        }
+        pemBytes, err := jwkbb.EncodePEM(raw)
+
+  - id: jwk-pem-function-removed-v2
+    kind: removed
+    package: jwk
+    mechanical: false
+    v2: Pem
+    v4: ""
+    replacement: "jwk/jwkbb.EncodePEM(jwk.ExportAll[any](set)...)"
+    search_patterns:
+      - 'jwk\.Pem\('
+    compiler_hints:
+      - 'undefined: jwk.Pem'
+    note: >
+      jwk.Pem is removed. For a jwk.Set, expand with jwk.ExportAll[any](set)
+      and spread the result variadically into jwkbb.EncodePEM. For a single
+      jwk.Key, unwrap with jwk.Export[any](key) first.
+    example:
+      before: |
+        pemBytes, err := jwk.Pem(set)
+      after: |
+        raws, err := jwk.ExportAll[any](set)
+        if err != nil {
+            return err
+        }
+        pemBytes, err := jwkbb.EncodePEM(raws...)
 
   # ============================================================
   # jws Package

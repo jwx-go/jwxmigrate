@@ -1,0 +1,3 @@
+main.go:12: [jwk-registerx509decoder-moved] (manual) jwk.RegisterX509Decoder(&myKey{}, jwk.X509DecodeFunc(func(b *pem.Block) (any, error) { return &myKey{}, nil }))
+
+total=1 mechanical=0 manual=1

@@ -1,0 +1,9 @@
+main.go:5: [jwk-filter-extension] (manual) jwk.KeyFilter
+main.go:6: [jwk-filter-extension] (manual) jwk.KeyFilter
+main.go:7: [jwk-filter-extension] (manual) jwk.NewFieldNameFilter("kty", "kid")
+main.go:8: [jwk-filter-extension] (manual) jwk.RSAStandardFieldsFilter()
+main.go:9: [jwk-filter-extension] (manual) jwk.ECDSAStandardFieldsFilter()
+main.go:10: [jwk-filter-extension] (manual) jwk.OKPStandardFieldsFilter()
+main.go:11: [jwk-filter-extension] (manual) jwk.SymmetricStandardFieldsFilter()
+
+total=7 mechanical=0 manual=7

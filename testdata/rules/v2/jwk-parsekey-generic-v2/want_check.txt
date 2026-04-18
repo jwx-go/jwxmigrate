@@ -1,3 +1,0 @@
-main.go:8: [jwk-parsekey-generic-v2] (manual) jwk.ParseKey(data)
-
-total=1 mechanical=0 manual=1
