@@ -10,6 +10,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestFindFixableFiles_DotRootIsNotSkipped pins that `findFixableFiles(".")`
+// does not bail out at the first WalkDir entry. Because that entry's
+// d.Name() is `.`, the dotfile-prefix rule in shouldSkipWalkDir would
+// otherwise SkipDir the whole tree, silently turning `jwxmigrate -fix .`
+// into a no-op. Real users hit this when running the tool from a project
+// root.
+func TestFindFixableFiles_DotRootIsNotSkipped(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.go"), []byte("package x\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sub", "b.go"), []byte("package x\n"), 0o644))
+
+	t.Chdir(dir)
+
+	files, err := findFixableFiles(".")
+	require.NoError(t, err)
+	require.Len(t, files, 2, "both a.go and sub/b.go must be discovered")
+}
+
 // Regression for JWXMIGRATE-20260415151950-013: a single unparseable file
 // must not abort the batch. Other files should still be processed and
 // the failure should be collected into the summary so users get one

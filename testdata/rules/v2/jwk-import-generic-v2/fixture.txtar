@@ -21,6 +21,6 @@ import (
 )
 
 func example(raw any) {
-	key, _ := jwk.Import(raw)
+	key, _ := jwk.Import[jwk.Key](raw)
 	_ = key
 }
