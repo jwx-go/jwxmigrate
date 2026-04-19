@@ -27,6 +27,7 @@ type Finding struct {
 	File          string `json:"file"`
 	Line          int    `json:"line"`
 	Text          string `json:"text"`
+	SourceLine    string `json:"source_line,omitempty"`
 	Mechanical    bool   `json:"mechanical"`
 	Note          string `json:"note"`
 	ExampleBefore string `json:"example_before,omitempty"`
@@ -354,6 +355,7 @@ func newFileFinding(r *CompiledRule, rel string, lineNum int, line string) Findi
 		File:       rel,
 		Line:       lineNum,
 		Text:       strings.TrimSpace(line),
+		SourceLine: line,
 		Mechanical: r.Mechanical,
 		Note:       strings.TrimSpace(r.Note),
 		MatchedBy:  "regex",
@@ -373,6 +375,9 @@ func FormatText(w io.Writer, result *CheckResult) {
 			label = "auto"
 		}
 		_, _ = fmt.Fprintf(w, "[%s] (%s) %s:%d: %s\n", f.RuleID, label, f.File, f.Line, f.Text)
+		if f.SourceLine != "" {
+			_, _ = fmt.Fprintf(w, "  | %s\n", f.SourceLine)
+		}
 		_, _ = fmt.Fprintf(w, "  %s\n\n", f.Note)
 	}
 

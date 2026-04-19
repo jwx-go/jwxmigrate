@@ -193,6 +193,9 @@ func fixFiles(files []string, rules []CompiledRule, opts FixOptions, out, errw i
 		_, _ = fmt.Fprintf(out, "\nRemaining issues (%d):\n\n", len(summary.remaining))
 		for _, f := range summary.remaining {
 			_, _ = fmt.Fprintf(out, "  %s:%d:\n", f.File, f.Line)
+			if f.SourceLine != "" {
+				_, _ = fmt.Fprintf(out, "    | %s\n", f.SourceLine)
+			}
 			_, _ = fmt.Fprintf(out, "    %s\n\n", f.Note)
 		}
 	}
