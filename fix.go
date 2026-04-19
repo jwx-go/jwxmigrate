@@ -249,6 +249,14 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 
 	var edits []taggedEdit
 
+	// pendingJWXImports tracks v4 jwx import paths that rewrites need
+	// injected because the file references the type only transitively
+	// (e.g. OPA's sign_test.go uses jwt.Token via a helper's return
+	// type without importing jwt directly). Keyed by v4 path so the
+	// same package is injected at most once; value is the desired
+	// local name. See ensureJWXImports for the post-pass.
+	pendingJWXImports := make(map[string]string)
+
 	// Pre-collect CallExpr fun nodes.
 	callFuns := make(map[ast.Node]struct{})
 	ast.Inspect(pf.ASTFile, func(n ast.Node) bool {
@@ -319,7 +327,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 						return true
 					}
 
-					ee := fixCall(pf, node, r, byteOffset, stmtOf, ifInitAssigns)
+					ee := fixCall(pf, node, r, byteOffset, stmtOf, ifInitAssigns, pendingJWXImports)
 					for _, e := range ee {
 						edits = append(edits, taggedEdit{Edit: e, ruleID: r.ID, line: lineOf(node)})
 					}
@@ -376,6 +384,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 
 	edits = ensureOsImport(pf, edits, byteOffset)
 	edits = ensureExtensionImports(pf, edits, rules, byteOffset)
+	edits = ensureJWXImports(pf, edits, pendingJWXImports, byteOffset)
 	return deduplicateEdits(edits)
 }
 
@@ -396,7 +405,7 @@ func fixImportChange(_ *ParsedGoFile, node *ast.ImportSpec, r *CompiledRule, byt
 
 // fixCall handles call expressions — either rename the function, delete
 // the enclosing statement for removed calls, or perform type-aware rewrites.
-func fixCall(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int, stmtOf map[ast.Node]ast.Stmt, ifInitAssigns map[*ast.AssignStmt]*ast.IfStmt) []Edit {
+func fixCall(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int, stmtOf map[ast.Node]ast.Stmt, ifInitAssigns map[*ast.AssignStmt]*ast.IfStmt, pendingJWXImports map[string]string) []Edit {
 	switch r.Kind {
 	case kindRemoved:
 		return fixDeleteStatement(node, byteOffset, stmtOf)
@@ -412,7 +421,7 @@ func fixCall(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset f
 		if ee := fixWithVerifyFalse(pf, node, r, byteOffset); ee != nil {
 			return ee
 		}
-		if ee := fixGetToField(pf, node, r, byteOffset, stmtOf); ee != nil {
+		if ee := fixGetToField(pf, node, r, byteOffset, stmtOf, ifInitAssigns, pendingJWXImports); ee != nil {
 			return ee
 		}
 		if ee := fixReadFileToParseFS(pf, node, r, byteOffset); ee != nil {
@@ -575,6 +584,28 @@ func ensureOsImport(pf *ParsedGoFile, edits []taggedEdit, byteOffset func(token.
 	return appendImportEdit(pf, edits, byteOffset, "", "os", triggerRuleID)
 }
 
+// ensureJWXImports injects a `pkg "path"` import for each v4 jwx
+// subpackage that a rewrite (currently only fixGetToField) referenced
+// via a transitively-reachable type the file didn't import directly.
+// Skipped when the path is already imported — importedAs matches on
+// the full v4 path so a pre-existing alias still counts.
+func ensureJWXImports(pf *ParsedGoFile, edits []taggedEdit, pending map[string]string, byteOffset func(token.Pos) int) []taggedEdit {
+	if len(pending) == 0 {
+		return edits
+	}
+	for v4Path, localName := range pending {
+		if importedAs(pf, v4Path) {
+			continue
+		}
+		alias := ""
+		if localName != path.Base(v4Path) {
+			alias = localName
+		}
+		edits = appendImportEdit(pf, edits, byteOffset, alias, v4Path, ruleGetToField)
+	}
+	return edits
+}
+
 // ensureExtensionImports injects one `pkg "path"` import for each distinct
 // moved_to_extension rule whose edits were emitted and whose target
 // package is not already imported. Called from the collectEdits post-pass.
@@ -601,7 +632,7 @@ func ensureExtensionImports(pf *ParsedGoFile, edits []taggedEdit, rules []Compil
 			continue
 		}
 		seen[key] = struct{}{}
-		if _, already := importedAs(pf, r.ExtensionModule); already {
+		if importedAs(pf, r.ExtensionModule) {
 			continue
 		}
 		edits = appendImportEdit(pf, edits, byteOffset, newPkg, r.ExtensionModule, e.ruleID)
@@ -636,23 +667,18 @@ func appendImportEdit(pf *ParsedGoFile, edits []taggedEdit, byteOffset func(toke
 	})
 }
 
-// importedAs reports whether importPath is present in the file's imports
-// and, if so, the local name used to refer to it.
-func importedAs(pf *ParsedGoFile, importPath string) (string, bool) {
+// importedAs reports whether importPath is present in the file's imports.
+func importedAs(pf *ParsedGoFile, importPath string) bool {
 	for _, imp := range pf.ASTFile.Imports {
 		p, err := strconv.Unquote(imp.Path.Value)
 		if err != nil {
 			continue
 		}
-		if p != importPath {
-			continue
+		if p == importPath {
+			return true
 		}
-		if imp.Name != nil {
-			return imp.Name.Name, true
-		}
-		return goPkgName(importPath), true
 	}
-	return "", false
+	return false
 }
 
 // canFixWithTypes returns true if a non-mechanical rule has a fixer in this
@@ -670,11 +696,19 @@ func canFixWithTypes(r *CompiledRule, pf *ParsedGoFile) bool {
 	return false
 }
 
-// fixSignatureChange handles function renames where v3 != v4.
 // fixGetToField rewrites obj.Get(name, &dst) → dst, err = pkg.Get[T](obj, name)
 // when type info is available to infer T and the receiver package.
-// Returns nil if this rule/call doesn't match the pattern.
-func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int, stmtOf map[ast.Node]ast.Stmt) []Edit {
+//
+// Returns nil when the call doesn't have the .Get(name, &ptr) shape so that
+// other fixers in the kindSignatureChange dispatch get a chance. Once the
+// shape is confirmed but a reshape can't be synthesized (unknown dst type,
+// unreachable receiver package, unsupported enclosing statement), returns
+// []Edit{} to claim the match and block collectEdits' fallthrough to
+// fixSignatureChange — without that block, the get-to-field rule would
+// naively rename .Get → .Field, producing code that doesn't compile
+// because v4's Field signature is `Field(name) (any, bool)`, not
+// `Get(name, &dst) error`.
+func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int, stmtOf map[ast.Node]ast.Stmt, ifInitAssigns map[*ast.AssignStmt]*ast.IfStmt, pendingJWXImports map[string]string) []Edit {
 	if r.ID != ruleGetToField || pf.TypesInfo == nil {
 		return nil
 	}
@@ -683,7 +717,9 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 		return nil
 	}
 
-	// Second arg must be &dst.
+	// Second arg must be &dst. After this point the call is confirmed
+	// to be get-to-field-shaped, so bail-outs switch to []Edit{} to
+	// block the naive-rename fallthrough.
 	unary, ok := node.Args[1].(*ast.UnaryExpr)
 	if !ok || unary.Op.String() != "&" {
 		return nil
@@ -692,7 +728,7 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 	// Infer T from the type of dst.
 	tv, ok := pf.TypesInfo.Types[unary.X]
 	if !ok {
-		return nil
+		return []Edit{}
 	}
 	typeName := types.TypeString(tv.Type, func(pkg *types.Package) string {
 		// Use the local import name for the type's package.
@@ -705,7 +741,14 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 	})
 
 	// Determine the receiver's package local name for pkg.Get[T].
+	// First try V3Imports (the common case: file directly imports the
+	// package). If the package is reachable only transitively (e.g. via
+	// a helper's return type — OPA's sign_test.go uses jwt.Token this
+	// way without importing jwt), fall back to the v3 path from
+	// TypesInfo and record a pending import for the post-pass so the
+	// rewritten call has something to bind against.
 	recvPkgLocal := ""
+	var recvPkgPath string
 	if recvTV, ok := pf.TypesInfo.Types[sel.X]; ok {
 		recvType := recvTV.Type
 		if ptr, ok := recvType.(*types.Pointer); ok {
@@ -713,9 +756,9 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 		}
 		if named, ok := recvType.(*types.Named); ok {
 			if obj := named.Obj(); obj != nil && obj.Pkg() != nil {
-				pkgPath := obj.Pkg().Path()
+				recvPkgPath = obj.Pkg().Path()
 				for localName, importPath := range pf.V3Imports {
-					if pkgPath == importPath {
+					if recvPkgPath == importPath {
 						recvPkgLocal = localName
 						break
 					}
@@ -724,7 +767,16 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 		}
 	}
 	if recvPkgLocal == "" {
-		return nil
+		if recvPkgPath == "" || !strings.HasPrefix(recvPkgPath, sourceImportPrefix) {
+			return []Edit{}
+		}
+		// Not directly imported — derive local name and queue an
+		// import for the v4-rewritten path. The import-v3-to-v4 rule
+		// only rewrites existing v3 ImportSpec nodes, so injecting a
+		// v4 path keeps the file consistent after the full pass.
+		recvPkgLocal = goPkgName(recvPkgPath)
+		v4Path := strings.Replace(recvPkgPath, sourceImportPrefix, targetImportPrefix, 1)
+		pendingJWXImports[v4Path] = recvPkgLocal
 	}
 
 	// Build the source text for the first argument (name).
@@ -735,7 +787,7 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 	dstText := extractSourceText(pf, unary.X)
 
 	if nameText == "" || objText == "" || dstText == "" {
-		return nil
+		return []Edit{}
 	}
 
 	// New call: pkg.Get[T](obj, name)
@@ -744,7 +796,7 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 	// Determine the enclosing statement to know what assignment to generate.
 	stmt, hasStmt := stmtOf[node]
 	if !hasStmt {
-		return nil
+		return []Edit{}
 	}
 
 	var newStmt string
@@ -753,6 +805,17 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 		// Bare call: obj.Get(name, &dst) → dst, _ = pkg.Get[T](obj, name)
 		newStmt = fmt.Sprintf("%s, _ = %s", dstText, newCall)
 	case *ast.AssignStmt:
+		if ifs, ok := ifInitAssigns[s]; ok {
+			// if-init shape: turn
+			//   if err := tok.Get(name, &dst); err != nil { BODY }
+			// into
+			//   if dstV4, err := jwt.Get[T](tok, name); err != nil { BODY } else { dst = dstV4 }
+			// The temp dstV4 dodges the shadowing trap (dst may already
+			// be declared outside the if), and the else preserves v3's
+			// "leave dst alone on error" semantics for callers whose
+			// BODY doesn't unconditionally exit.
+			return fixGetToFieldIfInit(pf, ifs, s, byteOffset, newCall, dstText)
+		}
 		if len(s.Lhs) == 1 {
 			lhs := extractSourceText(pf, s.Lhs[0])
 			tok := s.Tok.String() // "=" or ":="
@@ -766,12 +829,62 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 		}
 	}
 	if newStmt == "" {
-		return nil
+		return []Edit{}
 	}
 
 	start := byteOffset(stmt.Pos())
 	end := byteOffset(stmt.End())
 	return []Edit{{Start: start, End: end, New: newStmt}}
+}
+
+// fixGetToFieldIfInit emits the if-init rewrite described on fixGetToField.
+// Mirrors fixJWKExportIfInit: adds a temp LHS, swaps the call, and appends
+// an else block that copies the temp back to dst. Skips when the if has
+// an existing else clause (merging into else-if chains is more reshape
+// than this fixer owns; the call gets reported as remaining).
+func fixGetToFieldIfInit(pf *ParsedGoFile, ifs *ast.IfStmt, init *ast.AssignStmt, byteOffset func(token.Pos) int, newCall, dstText string) []Edit {
+	if ifs.Else != nil {
+		return []Edit{}
+	}
+	if len(init.Lhs) != 1 {
+		return []Edit{}
+	}
+	errText := extractSourceText(pf, init.Lhs[0])
+	if errText == "" {
+		return []Edit{}
+	}
+	tmpName := getFieldTempName(pf, dstText, ifs.Pos())
+
+	lhsStart := byteOffset(init.Lhs[0].Pos())
+	lhsEnd := byteOffset(init.Lhs[0].End())
+	rhsStart := byteOffset(init.Rhs[0].Pos())
+	rhsEnd := byteOffset(init.Rhs[0].End())
+	bodyEnd := byteOffset(ifs.Body.End())
+
+	elseBlock := fmt.Sprintf(" else {\n\t%s = %s\n}", dstText, tmpName)
+
+	return []Edit{
+		{Start: lhsStart, End: lhsEnd, New: tmpName + ", " + errText},
+		{Start: rhsStart, End: rhsEnd, New: newCall},
+		{Start: bodyEnd, End: bodyEnd, New: elseBlock},
+	}
+}
+
+// getFieldTempName mirrors exportTempName but uses a V4 suffix (shorter
+// than Export's V4Exported — this rewrite reads as "the value from Get",
+// so the suffix just disambiguates the temp from the outer dst).
+func getFieldTempName(pf *ParsedGoFile, dst string, pos token.Pos) string {
+	base := dst + "V4"
+	if !nameInScope(pf, base, pos) {
+		return base
+	}
+	for i := 2; i < 100; i++ {
+		candidate := fmt.Sprintf("%s%d", base, i)
+		if !nameInScope(pf, candidate, pos) {
+			return candidate
+		}
+	}
+	return base
 }
 
 // extractSourceText extracts the source text for an AST expression.
