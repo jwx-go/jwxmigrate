@@ -171,10 +171,7 @@ func checkGoFilesTyped(dir string, rules []CompiledRule, opts CheckOptions) ([]F
 	// GOMAXPROCS. Shared state (coveredFiles) is synchronized via mu;
 	// per-module findings are collected into fixed slots and merged
 	// after, so output order stays deterministic.
-	workers := runtime.GOMAXPROCS(0)
-	if workers > len(moduleRoots) {
-		workers = len(moduleRoots)
-	}
+	workers := min(runtime.GOMAXPROCS(0), len(moduleRoots))
 	perModule := make([][]Finding, len(moduleRoots))
 	var mu sync.Mutex
 	addCovered := func(files []string) {
@@ -186,14 +183,12 @@ func checkGoFilesTyped(dir string, rules []CompiledRule, opts CheckOptions) ([]F
 	}
 	var wg sync.WaitGroup
 	jobs := make(chan int)
-	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range workers {
+		wg.Go(func() {
 			for i := range jobs {
 				perModule[i] = loadAndScanModule(moduleRoots[i], absDir, rules, opts, addCovered)
 			}
-		}()
+		})
 	}
 	for i := range moduleRoots {
 		jobs <- i
@@ -269,7 +264,9 @@ func moduleImportsSource(modRoot string) bool {
 		}
 		f, parseErr := parser.ParseFile(fset, p, nil, parser.ImportsOnly)
 		if parseErr != nil {
-			return nil
+			// Unparseable file (e.g. testdata fixture) — skip and
+			// keep walking; peer files may still have v3 imports.
+			return nil //nolint:nilerr
 		}
 		for _, imp := range f.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
