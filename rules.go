@@ -98,6 +98,7 @@ func loadRules(migration string) ([]CompiledRule, error) {
 	}
 
 	sourceImportPrefix = rs.From
+	targetImportPrefix = rs.To
 
 	compiled := make([]CompiledRule, 0, len(rs.Rules))
 	for _, r := range rs.Rules {

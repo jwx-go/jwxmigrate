@@ -31,6 +31,13 @@ var versionSuffix = regexp.MustCompile(`^v\d+$`)
 // sourceImportPrefix is set by loadRules based on the migration's "from" field.
 var sourceImportPrefix = "github.com/lestrrat-go/jwx/v3"
 
+// targetImportPrefix is set by loadRules based on the migration's "to" field.
+// Exposed separately from sourceImportPrefix so rewrites can compute the
+// v4 equivalent of a v3 import path — e.g. when a file references a jwx
+// type transitively (via a helper's return type) and the fixer needs to
+// inject an import for the matching v4 subpackage.
+var targetImportPrefix = "github.com/lestrrat-go/jwx/v4"
+
 // ParsedGoFile holds a parsed Go file with its v3 import mappings.
 // The Src and ASTFile fields are retained for future rewriting operations.
 type ParsedGoFile struct {
