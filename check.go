@@ -9,13 +9,15 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // maxScanBufferSize bounds the per-line buffer for bufio.Scanner in
-// scanFileForRule. The bufio default is 64 KiB, which silently skips any
-// file with a longer line; 16 MiB is large enough to cover generated or
+// scanFile. The bufio default is 64 KiB, which silently skips any file
+// with a longer line; 16 MiB is large enough to cover generated or
 // minified content users might reasonably ship in their repos.
 const maxScanBufferSize = 16 * 1024 * 1024
 
@@ -116,13 +118,54 @@ func shouldSkip(r *CompiledRule, opts CheckOptions) bool {
 // in nested modules or with missing dependencies).
 func checkGoFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Finding, error) {
 	// Phase 1: type-checked loading — process whatever packages we can.
-	typedFindings, coveredFiles := checkGoFilesTyped(dir, rules, opts)
-
-	// Phase 2: walk all .go files, skip those already covered by typed loading.
-	var untypedFindings []Finding
+	typedFindings, coveredFiles, prescans := checkGoFilesTyped(dir, rules, opts)
 
 	absDir, _ := filepath.Abs(dir)
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+
+	// Phase 2a: scan the v3-importing files the prescans already found
+	// but that packages.Load didn't cover. On a typical single-module
+	// target this short list subsumes what a full phase-2 walk would
+	// have produced — without re-walking the tree and re-parsing every
+	// .go file.
+	var untypedFindings []Finding
+	for _, ps := range prescans {
+		for _, absPath := range ps.V3Files {
+			if _, covered := coveredFiles[absPath]; covered {
+				continue
+			}
+			rel, err := filepath.Rel(absDir, absPath)
+			if err != nil {
+				rel = absPath
+			}
+			pf, err := parseGoFile(absPath, rel)
+			if err != nil {
+				// Scanner path intentionally ignores parse failures —
+				// testdata fixtures are commonly unparseable.
+				if errors.Is(err, errParseFailed) {
+					continue
+				}
+				return append(typedFindings, untypedFindings...), err
+			}
+			if pf == nil {
+				continue
+			}
+			untypedFindings = append(untypedFindings, scanGoFileAST(pf, rules, opts)...)
+		}
+	}
+
+	// Phase 2b: orphan space — files under dir but outside every module
+	// root (e.g. user points jwxmigrate at a parent directory containing
+	// a mix of Go modules and loose files, or at a non-module tree
+	// entirely). If absDir is itself a module root, every file inside it
+	// was already classified by prescan and phase 2b is a no-op.
+	moduleRoots := make(map[string]struct{}, len(prescans))
+	for _, ps := range prescans {
+		moduleRoots[ps.Root] = struct{}{}
+	}
+	if _, absIsModule := moduleRoots[absDir]; absIsModule {
+		return append(typedFindings, untypedFindings...), nil
+	}
+	err := filepath.WalkDir(absDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -132,6 +175,11 @@ func checkGoFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Findin
 			if shouldSkipWalkDir(name) {
 				return filepath.SkipDir
 			}
+			if path != absDir {
+				if _, isMod := moduleRoots[path]; isMod {
+					return filepath.SkipDir
+				}
+			}
 			return nil
 		}
 
@@ -139,21 +187,13 @@ func checkGoFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Findin
 			return nil
 		}
 
-		absPath, _ := filepath.Abs(path)
-		if _, covered := coveredFiles[absPath]; covered {
-			return nil
-		}
-
-		rel, err := filepath.Rel(absDir, absPath)
+		rel, err := filepath.Rel(absDir, path)
 		if err != nil {
 			rel = path
 		}
 
-		pf, err := parseGoFile(absPath, rel)
+		pf, err := parseGoFile(path, rel)
 		if err != nil {
-			// Scanner path intentionally ignores parse failures —
-			// testdata fixtures are commonly unparseable. The --fix
-			// path surfaces this sentinel instead.
 			if errors.Is(err, errParseFailed) {
 				return nil
 			}
@@ -163,8 +203,7 @@ func checkGoFiles(dir string, rules []CompiledRule, opts CheckOptions) ([]Findin
 			return nil
 		}
 
-		ff := scanGoFileAST(pf, rules, opts)
-		untypedFindings = append(untypedFindings, ff...)
+		untypedFindings = append(untypedFindings, scanGoFileAST(pf, rules, opts)...)
 		return nil
 	})
 
@@ -195,7 +234,14 @@ func checkBuildFiles(dir string, rules []CompiledRule, opts CheckOptions) []Find
 		return nil
 	}
 
-	var findings []Finding
+	// Collect matching files in a cheap walk; defer the expensive bit
+	// (opening + line-by-line regex) to a parallel stage.
+	type job struct {
+		path  string
+		rel   string
+		rules []*CompiledRule
+	}
+	var jobs []job
 	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if d != nil && d.IsDir() {
@@ -212,37 +258,71 @@ func checkBuildFiles(dir string, rules []CompiledRule, opts CheckOptions) []Find
 		}
 
 		base := d.Name()
+		var matched []*CompiledRule
+		for _, r := range active {
+			for _, pat := range r.FilePatterns {
+				ok, mErr := filepath.Match(pat, base)
+				if mErr == nil && ok {
+					matched = append(matched, r)
+					break
+				}
+			}
+		}
+		if len(matched) == 0 {
+			return nil
+		}
+
 		rel, relErr := filepath.Rel(dir, path)
 		if relErr != nil {
 			rel = path
 		}
-
-		for _, r := range active {
-			matched := false
-			for _, pat := range r.FilePatterns {
-				ok, mErr := filepath.Match(pat, base)
-				if mErr == nil && ok {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				continue
-			}
-			ff, scanErr := scanFileForRule(path, rel, r)
-			if scanErr != nil {
-				fmt.Fprintf(os.Stderr, "jwxmigrate: warning: scanning %s for rule %s: %v\n", rel, r.ID, scanErr)
-				continue
-			}
-			findings = append(findings, ff...)
-		}
+		jobs = append(jobs, job{path: path, rel: rel, rules: matched})
 		return nil
 	})
 
+	if len(jobs) == 0 {
+		return nil
+	}
+
+	// Parallel scan: one open + one line-by-line pass per file, applying
+	// every matched rule's patterns per line. The previous implementation
+	// opened and re-scanned each file once per matching rule, which was
+	// the dominant cost on trees full of *.yml / *.sh / Makefile hits.
+	perJob := make([][]Finding, len(jobs))
+	workers := min(runtime.GOMAXPROCS(0), len(jobs))
+	var wg sync.WaitGroup
+	ch := make(chan int)
+	for range workers {
+		wg.Go(func() {
+			for i := range ch {
+				ff, scanErr := scanFile(jobs[i].path, jobs[i].rel, jobs[i].rules)
+				if scanErr != nil {
+					fmt.Fprintf(os.Stderr, "jwxmigrate: warning: scanning %s: %v\n", jobs[i].rel, scanErr)
+					continue
+				}
+				perJob[i] = ff
+			}
+		})
+	}
+	for i := range jobs {
+		ch <- i
+	}
+	close(ch)
+	wg.Wait()
+
+	var findings []Finding
+	for _, ff := range perJob {
+		findings = append(findings, ff...)
+	}
 	return findings
 }
 
-func scanFileForRule(path, rel string, r *CompiledRule) ([]Finding, error) {
+// scanFile reads path once and applies every supplied rule's regex
+// patterns to each line. Callers that pass N rules save N-1 file opens
+// and N-1 line-by-line scans compared to the old per-rule helper —
+// meaningful because rules commonly share file_patterns (e.g. *.sh is
+// listed by four v3→v4 rules).
+func scanFile(path, rel string, rules []*CompiledRule) ([]Finding, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -256,28 +336,33 @@ func scanFileForRule(path, rel string, r *CompiledRule) ([]Finding, error) {
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
-		for _, pat := range r.Patterns {
-			if pat.MatchString(line) {
-				finding := Finding{
-					RuleID:     r.ID,
-					File:       rel,
-					Line:       lineNum,
-					Text:       strings.TrimSpace(line),
-					Mechanical: r.Mechanical,
-					Note:       strings.TrimSpace(r.Note),
-					MatchedBy:  "regex",
+		for _, r := range rules {
+			for _, pat := range r.Patterns {
+				if pat.MatchString(line) {
+					findings = append(findings, newFileFinding(r, rel, lineNum, line))
+					break
 				}
-				if r.Example != nil {
-					finding.ExampleBefore = strings.TrimSpace(r.Example.Before)
-					finding.ExampleAfter = strings.TrimSpace(r.Example.After)
-				}
-				findings = append(findings, finding)
-				break
 			}
 		}
 	}
-
 	return findings, scanner.Err()
+}
+
+func newFileFinding(r *CompiledRule, rel string, lineNum int, line string) Finding {
+	f := Finding{
+		RuleID:     r.ID,
+		File:       rel,
+		Line:       lineNum,
+		Text:       strings.TrimSpace(line),
+		Mechanical: r.Mechanical,
+		Note:       strings.TrimSpace(r.Note),
+		MatchedBy:  "regex",
+	}
+	if r.Example != nil {
+		f.ExampleBefore = strings.TrimSpace(r.Example.Before)
+		f.ExampleAfter = strings.TrimSpace(r.Example.After)
+	}
+	return f
 }
 
 // FormatText writes findings in human-readable text format.
