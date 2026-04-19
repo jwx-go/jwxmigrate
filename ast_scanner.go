@@ -305,9 +305,18 @@ func loadAndScanModule(modRoot, topDir string, rules []CompiledRule, opts CheckO
 	var findings []Finding
 	var covered []string
 	for _, pkg := range pkgs {
-		if pkg.TypesInfo == nil || len(pkg.Errors) > 0 {
+		if pkg.TypesInfo == nil {
 			continue
 		}
+		// Tolerate package-level errors, mirroring parseGoFileTyped.
+		// Two realistic cases land here: (1) an unrelated sibling file
+		// in the same package has a compile error, and (2) the v3→v4
+		// signature changes themselves (jwk.Import missing type arg,
+		// jwk.Export extra arg) surface as type errors — which is
+		// exactly what these rules exist to flag. Per-rule fixers
+		// already guard individual nodes when node-level type info is
+		// missing (see fixJWKExportGeneric, fixGetToField), so partial
+		// type info stays safe.
 		for i, astFile := range pkg.Syntax {
 			filePath := pkg.GoFiles[i]
 			covered = append(covered, filePath)
