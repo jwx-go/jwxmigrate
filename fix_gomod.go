@@ -1,13 +1,29 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 
 	"golang.org/x/mod/modfile"
 )
+
+// runGoModTidy runs `go mod tidy` inside dir. It's a package-level variable
+// so tests can swap in a recording stub without shelling out to the real
+// toolchain. Production code always goes through defaultRunGoModTidy.
+var runGoModTidy = defaultRunGoModTidy
+
+func defaultRunGoModTidy(dir string, out, errw io.Writer) error {
+	cmd := exec.CommandContext(context.Background(), "go", "mod", "tidy")
+	cmd.Dir = dir
+	cmd.Stdout = out
+	cmd.Stderr = errw
+	return cmd.Run()
+}
 
 // goModFilename is the canonical filename of a Go module file, used by the
 // build-file dispatcher and the fixable-file walker.
@@ -15,9 +31,9 @@ const goModFilename = "go.mod"
 
 // latestV4Version is the jwx/v4 module version that go.mod rewrites pin to.
 // Bump on every jwxmigrate release that needs to track a newer v4 minimum.
-// Users typically follow up with `go mod tidy`, which will float the
-// version to whatever the toolchain selects, so this only needs to be a
-// valid version that go can resolve, not necessarily the absolute latest.
+// fixFiles runs `go mod tidy` after the rewrite, which floats the version
+// to whatever the toolchain selects, so this only needs to be a valid
+// version that go can resolve, not necessarily the absolute latest.
 const latestV4Version = "v4.0.0"
 
 // FixBuildFile applies mechanical fixes to a non-Go build file (currently
