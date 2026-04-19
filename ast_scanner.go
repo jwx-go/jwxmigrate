@@ -635,6 +635,7 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 			EndLine:    end.Line,
 			EndCol:     end.Column,
 			Text:       text,
+			SourceLine: sourceLineAt(pf.Src, pos.Line),
 			Mechanical: r.Mechanical,
 			Note:       strings.TrimSpace(r.Note),
 			NodeKind:   nodeKind,
@@ -895,6 +896,7 @@ func regexFallback(pf *ParsedGoFile, r *CompiledRule) []Finding {
 					File:       pf.RelPath,
 					Line:       lineNum,
 					Text:       strings.TrimSpace(line),
+					SourceLine: line,
 					Mechanical: r.Mechanical,
 					Note:       strings.TrimSpace(r.Note),
 					MatchedBy:  "regex",
@@ -919,6 +921,23 @@ func goPkgName(importPath string) string {
 		return path.Base(dir)
 	}
 	return base
+}
+
+// sourceLineAt returns the 1-indexed source line from src, trimmed of its
+// terminating \r\n but preserving leading whitespace (so diagnostics keep
+// their original indentation). Returns "" when line is out of range.
+func sourceLineAt(src []byte, line int) string {
+	if line <= 0 {
+		return ""
+	}
+	i := 1
+	for raw := range bytes.Lines(src) {
+		if i == line {
+			return string(bytes.TrimRight(raw, "\r\n"))
+		}
+		i++
+	}
+	return ""
 }
 
 // extractNodeText extracts the source text corresponding to an AST node.
