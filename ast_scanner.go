@@ -156,6 +156,130 @@ func parseGoFileTyped(filePath string, overlay map[string][]byte) *ParsedGoFile 
 	return nil
 }
 
+// buildTypedFileCache loads the packages containing the given files with
+// full type information via a single packages.Load per module root, and
+// returns a map from absolute file path to a ready-to-use ParsedGoFile
+// for every v3-importing file covered by those loads.
+//
+// The fix batch uses this cache to avoid calling packages.Load once per
+// file — a pattern that re-parses and re-type-checks every transitive
+// dependency N times on large consumers. Files whose imports-only prescan
+// turns up no jwx imports are deliberately omitted; FixFileWithOptions
+// treats a cache miss as "not a v3 file" and skips parseGoFileTyped
+// entirely when a cache was supplied, preserving the speedup even for
+// non-v3 files in the same batch.
+//
+// overlay is forwarded to packages.Config.Overlay so the type checker
+// sees pre-batch content even after sibling files have been rewritten on
+// disk — same semantics parseGoFileTyped used to provide per file.
+func buildTypedFileCache(files []string, overlay map[string][]byte) map[string]*ParsedGoFile {
+	if len(files) == 0 {
+		return nil
+	}
+	moduleRoots := discoverModuleRootsForFiles(files)
+	if len(moduleRoots) == 0 {
+		return nil
+	}
+
+	cache := make(map[string]*ParsedGoFile)
+	var mu sync.Mutex
+
+	workers := min(runtime.GOMAXPROCS(0), len(moduleRoots))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			for i := range jobs {
+				ps := prescanModule(moduleRoots[i])
+				if len(ps.Patterns) == 0 {
+					continue
+				}
+				cfg := &packages.Config{
+					Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo |
+						packages.NeedFiles | packages.NeedName | packages.NeedImports | packages.NeedModule,
+					Dir:     ps.Root,
+					Overlay: overlay,
+					Tests:   true,
+				}
+				pkgs, err := packages.Load(cfg, ps.Patterns...)
+				if err != nil {
+					continue
+				}
+				for _, pkg := range pkgs {
+					if pkg.TypesInfo == nil {
+						continue
+					}
+					for j, astFile := range pkg.Syntax {
+						if j >= len(pkg.GoFiles) {
+							continue
+						}
+						filePath := pkg.GoFiles[j]
+						v3Imports := buildV3ImportMap(astFile)
+						if len(v3Imports) == 0 {
+							continue
+						}
+						src, readErr := os.ReadFile(filePath)
+						if readErr != nil {
+							continue
+						}
+						mu.Lock()
+						if _, exists := cache[filePath]; !exists {
+							cache[filePath] = &ParsedGoFile{
+								RelPath:   filePath,
+								Src:       src,
+								FileSet:   pkg.Fset,
+								ASTFile:   astFile,
+								V3Imports: v3Imports,
+								TypesInfo: pkg.TypesInfo,
+							}
+						}
+						mu.Unlock()
+					}
+				}
+			}
+		})
+	}
+	for i := range moduleRoots {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+
+	return cache
+}
+
+// discoverModuleRootsForFiles returns the unique set of module roots
+// (directories containing go.mod) that own the given files. Files whose
+// tree contains no go.mod upward are silently skipped — buildTypedFileCache
+// can't load them and the caller falls back to untyped parsing.
+func discoverModuleRootsForFiles(files []string) []string {
+	seen := make(map[string]struct{})
+	var roots []string
+	for _, f := range files {
+		abs, err := filepath.Abs(f)
+		if err != nil {
+			continue
+		}
+		dir := filepath.Dir(abs)
+		for d := dir; d != ""; {
+			if _, err := os.Stat(filepath.Join(d, goModFilename)); err == nil {
+				if _, ok := seen[d]; !ok {
+					seen[d] = struct{}{}
+					roots = append(roots, d)
+				}
+				break
+			}
+			parent := filepath.Dir(d)
+			if parent == d {
+				break
+			}
+			d = parent
+		}
+	}
+	sort.Strings(roots)
+	return roots
+}
+
 // checkGoFilesTyped discovers all Go module roots under dir and uses
 // go/packages to load packages with type information from each.
 // Returns findings, the set of absolute file paths that were
