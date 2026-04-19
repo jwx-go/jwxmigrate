@@ -420,6 +420,12 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 					if !isV3Type(pf.TypesInfo, sel.X) {
 						continue
 					}
+				} else if !receiverDeclaredAsV3(sel.X, pf.V3Imports) {
+					// No type info — accept only receivers whose declared type
+					// is package-qualified to a v3 import. Without this guard
+					// every .Get(), .Set(), etc. in a v3-importing file would
+					// match, producing false positives on unrelated code.
+					continue
 				}
 				addFinding(rm.rule, node, "CallExpr")
 			}
@@ -509,6 +515,31 @@ func localIdentDeclPackage(ident *ast.Ident) string {
 		}
 	}
 	return ""
+}
+
+// receiverDeclaredAsV3 is the untyped-mode receiver check for MatchMethodCall.
+// It accepts simple-identifier receivers in two shapes:
+//
+//  1. The identifier names a v3 package import (e.g. jwt.ReadFile(...))
+//  2. The identifier is a local var/param whose declared type is
+//     package-qualified to a v3 import (e.g. tok.Get(...) where tok jwt.Token)
+//
+// Chained calls, type assertions, and locally-typed receivers fall through,
+// sacrificing recall for precision in scans without go/packages type info.
+func receiverDeclaredAsV3(expr ast.Expr, v3Imports map[string]string) bool {
+	ident, ok := expr.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	if _, ok := v3Imports[ident.Name]; ok {
+		return true
+	}
+	pkg := localIdentDeclPackage(ident)
+	if pkg == "" {
+		return false
+	}
+	_, ok = v3Imports[pkg]
+	return ok
 }
 
 // isV3Type checks whether the type of an expression belongs to a v3 jwx package.

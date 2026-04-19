@@ -1,0 +1,56 @@
+-- input/main.go --
+package example
+
+import (
+	_ "github.com/lestrrat-go/jwx/v3/jwt"
+)
+
+// The get-to-field rule targets .Get(name, &dst) on v3 Token/Headers
+// receivers. In untyped scans (no go.mod, so pf.TypesInfo is nil), the
+// matcher must not flag .Get() calls on unrelated receivers just because
+// the surrounding file happens to import v3.
+//
+// Each call below has a non-jwx receiver and must not trigger get-to-field.
+
+type cache struct{}
+
+func (cache) Get(string) string { return "" }
+
+func chained() cache { return cache{} }
+
+func example() {
+	var c cache
+	_ = c.Get("k")
+	_ = chained().Get("k")
+	_ = any(c).(cache).Get("k")
+}
+-- want_check.txt --
+main.go:4: [import-v3-to-v4] (mechanical) _ "github.com/lestrrat-go/jwx/v3/jwt"
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package example
+
+import (
+	_ "github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+// The get-to-field rule targets .Get(name, &dst) on v3 Token/Headers
+// receivers. In untyped scans (no go.mod, so pf.TypesInfo is nil), the
+// matcher must not flag .Get() calls on unrelated receivers just because
+// the surrounding file happens to import v3.
+//
+// Each call below has a non-jwx receiver and must not trigger get-to-field.
+
+type cache struct{}
+
+func (cache) Get(string) string { return "" }
+
+func chained() cache { return cache{} }
+
+func example() {
+	var c cache
+	_ = c.Get("k")
+	_ = chained().Get("k")
+	_ = any(c).(cache).Get("k")
+}
