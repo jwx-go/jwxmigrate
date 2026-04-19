@@ -34,7 +34,7 @@ import (
 
 func example(rawKey any) {
 	tok, _ := jwt.ParseFS(os.DirFS("."), "token.jwt")
-	key, err := jwk.Import(rawKey)
+	key, err := jwk.Import[jwk.Key](rawKey)
 	_, _ = tok, err
 	_ = key
 }

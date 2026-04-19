@@ -80,7 +80,13 @@ func parseGoFile(filePath, rel string) (*ParsedGoFile, error) {
 
 // parseGoFileTyped attempts to load a single Go file with type information
 // via go/packages. Returns nil if type-checked loading fails.
-func parseGoFileTyped(filePath string) *ParsedGoFile {
+//
+// overlay, when non-nil, is forwarded to packages.Config.Overlay so the
+// type checker reads the snapshot bytes for any covered file rather than
+// the live disk content. Batch fixes (fixFiles) use this to keep
+// in-progress rewrites from poisoning the package's compile state for
+// later files.
+func parseGoFileTyped(filePath string, overlay map[string][]byte) *ParsedGoFile {
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
 		return nil
@@ -90,7 +96,15 @@ func parseGoFileTyped(filePath string) *ParsedGoFile {
 	cfg := &packages.Config{
 		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo |
 			packages.NeedFiles | packages.NeedName | packages.NeedImports | packages.NeedModule,
-		Dir: dir,
+		Dir:     dir,
+		Overlay: overlay,
+		// Test files live in a separate package variant. Without
+		// Tests: true, *_test.go files are not present in any pkg.GoFiles
+		// so the per-file lookup below silently misses them and the
+		// caller falls back to no-types mode — every type-info-dependent
+		// fix (jwk-export-generic, get-to-field) silently no-ops on
+		// tests.
+		Tests: true,
 	}
 	pkgs, err := packages.Load(cfg, ".")
 	if err != nil {
@@ -98,9 +112,15 @@ func parseGoFileTyped(filePath string) *ParsedGoFile {
 	}
 
 	for _, pkg := range pkgs {
-		if pkg.TypesInfo == nil || len(pkg.Errors) > 0 {
+		if pkg.TypesInfo == nil {
 			continue
 		}
+		// Tolerate package-level errors (typically: a sibling file in the
+		// same package referenced an as-yet-unavailable v4 import after a
+		// previous batch step rewrote it on disk). The overlay should
+		// usually hide those, but if some sibling isn't in the batch the
+		// type checker may still complain — accept partial type info as
+		// long as the dst variables we care about have known types.
 		for i, astFile := range pkg.Syntax {
 			if pkg.GoFiles[i] != absPath {
 				continue

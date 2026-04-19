@@ -128,8 +128,18 @@ type fixBatchSummary struct {
 // emits a single manifest at the end instead of aborting the batch and
 // leaving the working tree half-migrated with no record of what was
 // skipped.
+//
+// Type-info loading uses a content overlay (see snapshotBatchOverlay) so
+// the type checker sees the original v3 source for every batch file
+// throughout the run. Without this, once one file in a package gets its
+// imports rewritten to v4, sibling files fail to type-check (the v4
+// module isn't yet in go.mod) — and any rule that requires types
+// (jwk-export-generic, get-to-field) silently downgrades to "no types,
+// no rewrite" for those siblings.
 func fixFiles(files []string, rules []CompiledRule, opts FixOptions, out, errw io.Writer) fixBatchSummary {
 	var summary fixBatchSummary
+	overlay := snapshotBatchOverlay(files)
+	opts.overlay = overlay
 	for _, f := range files {
 		result, err := fixOneFile(f, rules, opts)
 		if err != nil {
@@ -181,6 +191,27 @@ func fixOneFile(filePath string, rules []CompiledRule, opts FixOptions) (*FixRes
 	return FixBuildFile(filePath, rules)
 }
 
+// snapshotBatchOverlay reads the pre-batch contents of every file in the
+// batch into a map keyed by absolute path, ready to hand to
+// packages.Config.Overlay. Files we can't read are silently skipped —
+// FixFile will surface the read failure via its own error path when it
+// gets to them.
+func snapshotBatchOverlay(files []string) map[string][]byte {
+	out := make(map[string][]byte, len(files))
+	for _, f := range files {
+		abs, err := filepath.Abs(f)
+		if err != nil {
+			continue
+		}
+		data, err := os.ReadFile(abs)
+		if err != nil {
+			continue
+		}
+		out[abs] = data
+	}
+	return out
+}
+
 // findFixableFiles returns every .go file under dir plus every go.mod
 // file the fixer knows how to rewrite. Build files other than go.mod
 // stay check-only for now.
@@ -192,7 +223,12 @@ func findFixableFiles(dir string) ([]string, error) {
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if shouldSkipWalkDir(name) {
+			// The first WalkDir visit is the root itself. When the caller
+			// passes `.` or `./`, d.Name() returns `.`, which would otherwise
+			// satisfy the dotfile-prefix rule and skip the entire walk —
+			// silently making `jwxmigrate -fix .` a no-op. Always descend
+			// into the root regardless of its name.
+			if path != dir && shouldSkipWalkDir(name) {
 				return filepath.SkipDir
 			}
 			return nil

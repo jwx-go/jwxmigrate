@@ -1,0 +1,38 @@
+// A user who already migrated to jwk.Import[T](raw) — including the safe
+// jwk.Import[jwk.Key](...) fallback this tool emits — must not see the
+// type parameter rewritten or doubled.
+//
+// Two layers protect us: (1) the search-pattern regex `jwk\.Import\(` does
+// not match `jwk.Import[jwk.Key](...)` because of the `[…]` between the
+// name and the paren, so Check finds nothing; (2) even if a future change
+// loosened the pattern, the parser exposes node.Fun as *ast.IndexExpr for
+// typed calls and the SelectorExpr cast in fixJWKImportGeneric bails out.
+// The "no findings" Check output below pins layer 1.
+//
+// config.yaml in this directory pins rule_id: jwk-import-generic so an
+// unrelated rule's overly-broad matcher (jwk-set-iterator picks up bare
+// `jwk.Key` references) doesn't drown out the assertion under test.
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwk"
+)
+
+func example(rawKey any) {
+	already, _ := jwk.Import[jwk.Key](rawKey)
+	_ = already
+}
+-- want_check.txt --
+(no findings)
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+func example(rawKey any) {
+	already, _ := jwk.Import[jwk.Key](rawKey)
+	_ = already
+}

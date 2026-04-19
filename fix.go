@@ -39,6 +39,14 @@ type FixOptions struct {
 	// Backup, when true, causes writeFormatted to save the original file
 	// alongside the rewritten one as `<path>.bak` before overwriting.
 	Backup bool
+
+	// overlay maps absolute file path → original (pre-batch) content. When
+	// non-nil, parseGoFileTyped passes it to packages.Config.Overlay so
+	// the type checker sees a consistent snapshot even after sibling
+	// files in the same package have already been rewritten on disk.
+	// Set by fixFiles for batch runs; nil for single-file callers (their
+	// type loading is consistent by construction).
+	overlay map[string][]byte
 }
 
 // FixFile applies mechanical fixes to a single Go file in-place.
@@ -51,7 +59,7 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 // FixFileWithOptions is FixFile with caller-supplied FixOptions.
 func FixFileWithOptions(filePath string, rules []CompiledRule, opts FixOptions) (*FixResult, error) {
 	// Try type-checked loading first for type-aware fixes.
-	pf := parseGoFileTyped(filePath)
+	pf := parseGoFileTyped(filePath, opts.overlay)
 	if pf == nil {
 		var err error
 		pf, err = parseGoFile(filePath, filePath)
@@ -220,6 +228,25 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 	// Pre-index: map ast.Node → parent statement for statement deletion.
 	stmtOf := buildStmtMap(pf.ASTFile)
 
+	// Pre-collect AssignStmts that live in if-init position, mapped back
+	// to the enclosing IfStmt. Fixers that produce a new LHS binding
+	// (jwk-export-generic) need both pieces of context: the if-init
+	// AssignStmt to detect the case at all, and the IfStmt itself to
+	// emit an else block that writes the temp back to the user's dst
+	// — adding a second LHS to the AssignStmt alone would shadow the
+	// outer dst and silently break every read after the if.
+	ifInitAssigns := make(map[*ast.AssignStmt]*ast.IfStmt)
+	ast.Inspect(pf.ASTFile, func(n ast.Node) bool {
+		ifs, ok := n.(*ast.IfStmt)
+		if !ok || ifs.Init == nil {
+			return true
+		}
+		if as, ok := ifs.Init.(*ast.AssignStmt); ok {
+			ifInitAssigns[as] = ifs
+		}
+		return true
+	})
+
 	var edits []taggedEdit
 
 	// Pre-collect CallExpr fun nodes.
@@ -292,7 +319,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 						return true
 					}
 
-					ee := fixCall(pf, node, r, byteOffset, stmtOf)
+					ee := fixCall(pf, node, r, byteOffset, stmtOf, ifInitAssigns)
 					for _, e := range ee {
 						edits = append(edits, taggedEdit{Edit: e, ruleID: r.ID, line: lineOf(node)})
 					}
@@ -369,7 +396,7 @@ func fixImportChange(_ *ParsedGoFile, node *ast.ImportSpec, r *CompiledRule, byt
 
 // fixCall handles call expressions — either rename the function, delete
 // the enclosing statement for removed calls, or perform type-aware rewrites.
-func fixCall(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int, stmtOf map[ast.Node]ast.Stmt) []Edit {
+func fixCall(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int, stmtOf map[ast.Node]ast.Stmt, ifInitAssigns map[*ast.AssignStmt]*ast.IfStmt) []Edit {
 	switch r.Kind {
 	case kindRemoved:
 		return fixDeleteStatement(node, byteOffset, stmtOf)
@@ -389,6 +416,15 @@ func fixCall(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset f
 			return ee
 		}
 		if ee := fixReadFileToParseFS(pf, node, r, byteOffset); ee != nil {
+			return ee
+		}
+		if ee := fixJWKImportGeneric(node, r, byteOffset); ee != nil {
+			return ee
+		}
+		if ee := fixJWKFromRawToImport(node, r, byteOffset); ee != nil {
+			return ee
+		}
+		if ee := fixJWKExportGeneric(pf, node, r, byteOffset, stmtOf, ifInitAssigns); ee != nil {
 			return ee
 		}
 		return fixSignatureChange(node, r, byteOffset)
@@ -619,10 +655,19 @@ func importedAs(pf *ParsedGoFile, importPath string) (string, bool) {
 	return "", false
 }
 
-// canFixWithTypes returns true if a non-mechanical rule can be fixed when
-// type information is available.
+// canFixWithTypes returns true if a non-mechanical rule has a fixer in this
+// file. Some fixers require type information (get-to-field uses it to infer
+// the type parameter); others are pure syntactic transforms safe without
+// types (the jwk.Import / jwk.FromRaw → typed-Import rewrites just inject
+// `[<jwk-local>.Key]`, preserving the original Key return semantics).
 func canFixWithTypes(r *CompiledRule, pf *ParsedGoFile) bool {
-	return r.ID == ruleGetToField && pf.TypesInfo != nil
+	switch r.ID {
+	case ruleGetToField, ruleJWKExportGeneric:
+		return pf.TypesInfo != nil
+	case ruleJWKImportGeneric, ruleJWKImportGenericV, ruleJWKFromRawV2:
+		return true
+	}
+	return false
 }
 
 // fixSignatureChange handles function renames where v3 != v4.
@@ -832,6 +877,262 @@ func isWithVerifyFalse(expr ast.Expr) bool {
 	// Check arg is the identifier "false".
 	ident, ok := call.Args[0].(*ast.Ident)
 	return ok && ident.Name == "false"
+}
+
+// fixJWKImportGeneric rewrites `<jwk>.Import(raw)` →
+// `<jwk>.Import[<jwk>.Key](raw)` for both the v3→v4 and v2→v4 rules. The
+// inserted `[<jwk>.Key]` preserves the v3/v2 return type (the bare Key
+// interface), so downstream code that took a Key keeps working without
+// edits. Callers that previously did `key.(jwk.RSAPrivateKey)` after the
+// call still need to migrate to `Import[jwk.RSAPrivateKey](raw)` by hand
+// — that's why the rules stay mechanical:false in YAML and remain on the
+// remaining-issues list even after this fix runs.
+//
+// The local name for jwk is taken from the call's selector receiver
+// (`sel.X`), so aliased imports like `myjwk "github.com/.../jwk"` produce
+// `myjwk.Import[myjwk.Key](...)`. The fixer skips already-typed calls —
+// when the user wrote `jwk.Import[T](raw)`, the parser exposes `node.Fun`
+// as an *ast.IndexExpr (or IndexListExpr), so the SelectorExpr cast
+// fails and we no-op.
+func fixJWKImportGeneric(node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int) []Edit {
+	if r.ID != ruleJWKImportGeneric && r.ID != ruleJWKImportGenericV {
+		return nil
+	}
+	sel, ok := node.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return nil
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	insertAt := byteOffset(sel.End())
+	return []Edit{{Start: insertAt, End: insertAt, New: "[" + pkg.Name + ".Key]"}}
+}
+
+// fixJWKExportGeneric rewrites `<jwk>.Export(k, &dst)` →
+// `dst, <err> = <jwk>.Export[T](k)` when type info lets us pick a T that
+// is round-trip-safe. Mirrors fixGetToField in shape (assignment-form
+// rewrite using type info to pick T) but applies a stricter T policy
+// because v4 Export's exporter returns whatever the dispatcher emits and
+// then asserts it to T — picking the wrong T turns a working v3 call
+// into a runtime "exported X, requested Y" error.
+//
+// Safe T cases (we rewrite):
+//
+//   - dst's pointed-to type is an interface (`any`, `jwk.Key`, etc.):
+//     T = pointed-to type. Dispatcher emits the concrete `*rsa.PrivateKey`
+//     style value, and an interface assertion always succeeds for any
+//     value, so the caller still gets back the same dynamic type they
+//     used to read out via `dst.(...)`.
+//
+//   - dst's pointed-to type is itself a pointer (`*rsa.PrivateKey`,
+//     `*ecdsa.PrivateKey`, …): T = pointed-to type. The dispatcher's
+//     return type matches T directly, so `result, ok := v.(T)` succeeds
+//     and dst preserves its original type.
+//
+// Skipped (left on the remaining-issues list):
+//
+//   - dst's pointed-to type is a non-interface value type (e.g.
+//     `var raw rsa.PrivateKey; jwk.Export(k, &raw)`). The dispatcher
+//     returns `*rsa.PrivateKey`, and Export[rsa.PrivateKey] would fail
+//     `v.(T)` at runtime. The only correct mechanical equivalent
+//     introduces a temp pointer + an explicit deref, which crosses
+//     statement boundaries — an invasive multi-line rewrite that's
+//     better left to the developer.
+//
+//   - if-init form (`if err := jwk.Export(k, &dst); err != nil { … }`)
+//     when the if already has an else branch (merging into existing else
+//     is more reshape than this fixer is willing to do). The bare
+//     no-else form IS handled: a temp var is introduced inside the init
+//     and an else block writes it back to dst, preserving v3's "leave
+//     dst untouched on error" semantics for callers whose body doesn't
+//     unconditionally exit.
+func fixJWKExportGeneric(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int, stmtOf map[ast.Node]ast.Stmt, ifInitAssigns map[*ast.AssignStmt]*ast.IfStmt) []Edit {
+	if r.ID != ruleJWKExportGeneric || pf.TypesInfo == nil {
+		return nil
+	}
+	sel, ok := node.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Export" || len(node.Args) != 2 {
+		return nil
+	}
+	pkgIdent, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	unary, ok := node.Args[1].(*ast.UnaryExpr)
+	if !ok || unary.Op != token.AND {
+		return nil
+	}
+	tv, ok := pf.TypesInfo.Types[unary.X]
+	if !ok {
+		return nil
+	}
+	dstType := tv.Type
+	switch dstType.Underlying().(type) {
+	case *types.Interface, *types.Pointer:
+		// Round-trip-safe. Fall through.
+	default:
+		return nil
+	}
+
+	tStr := types.TypeString(dstType, func(pkg *types.Package) string {
+		for localName, importPath := range pf.V3Imports {
+			if pkg.Path() == importPath {
+				return localName
+			}
+		}
+		return pkg.Name()
+	})
+
+	keyText := extractSourceText(pf, node.Args[0])
+	dstText := extractSourceText(pf, unary.X)
+	if keyText == "" || dstText == "" {
+		return nil
+	}
+	newCall := fmt.Sprintf("%s.Export[%s](%s)", pkgIdent.Name, tStr, keyText)
+
+	stmt, hasStmt := stmtOf[node]
+	if !hasStmt {
+		return nil
+	}
+	var newStmt string
+	switch s := stmt.(type) {
+	case *ast.ExprStmt:
+		newStmt = fmt.Sprintf("%s, _ = %s", dstText, newCall)
+	case *ast.AssignStmt:
+		if ifs, ok := ifInitAssigns[s]; ok {
+			// if-init shape: turn
+			//   if err := jwk.Export(k, &dst); err != nil { BODY }
+			// into
+			//   if dstV4, err := jwk.Export[T](k); err != nil { BODY } else { dst = dstV4 }
+			// The temp dstV4 dodges the shadowing trap (the inner dst would
+			// otherwise hide every outer read after the if), and the else
+			// keeps v3's "leave dst alone on error" semantics for callers
+			// whose BODY doesn't unconditionally exit.
+			return fixJWKExportIfInit(pf, ifs, s, byteOffset, newCall, dstText)
+		}
+		if len(s.Lhs) != 1 {
+			return nil
+		}
+		lhs := extractSourceText(pf, s.Lhs[0])
+		tok := s.Tok.String()
+		if lhs == "_" {
+			newStmt = fmt.Sprintf("%s, _ %s %s", dstText, tok, newCall)
+		} else {
+			newStmt = fmt.Sprintf("%s, %s %s %s", dstText, lhs, tok, newCall)
+		}
+	}
+	if newStmt == "" {
+		return nil
+	}
+	start := byteOffset(stmt.Pos())
+	end := byteOffset(stmt.End())
+	return []Edit{{Start: start, End: end, New: newStmt}}
+}
+
+// fixJWKExportIfInit emits the if-init rewrite documented on
+// fixJWKExportGeneric. Caller has already verified shape (jwk.Export
+// with two args, &dst arg, dst type round-trip-safe) and computed
+// newCall (`<jwk>.Export[T](k)`) and dstText (the source text of the
+// dst variable). This function owns the surrounding-statement reshape:
+// it edits the AssignStmt's LHS to add a temp, swaps in the new call,
+// and inserts an else block that writes the temp back to dst.
+//
+// Skips when the if already has an else clause — merging into existing
+// else (especially else-if chains) is more invasive than this fixer is
+// willing to do; the call gets reported on the remaining-issues list.
+func fixJWKExportIfInit(pf *ParsedGoFile, ifs *ast.IfStmt, init *ast.AssignStmt, byteOffset func(token.Pos) int, newCall, dstText string) []Edit {
+	if ifs.Else != nil {
+		return nil
+	}
+	if len(init.Lhs) != 1 {
+		return nil
+	}
+	errText := extractSourceText(pf, init.Lhs[0])
+	if errText == "" {
+		return nil
+	}
+	tmpName := exportTempName(pf, dstText, ifs.Pos())
+
+	// Three edits:
+	//   1. Replace the AssignStmt's single LHS (`err`) with `<tmp>, err`.
+	//   2. Replace the AssignStmt's RHS (the v3 call) with newCall.
+	//   3. Append ` else { <dst> = <tmp> }` after the if's body.
+	lhsStart := byteOffset(init.Lhs[0].Pos())
+	lhsEnd := byteOffset(init.Lhs[0].End())
+	rhsStart := byteOffset(init.Rhs[0].Pos())
+	rhsEnd := byteOffset(init.Rhs[0].End())
+	bodyEnd := byteOffset(ifs.Body.End())
+
+	elseBlock := fmt.Sprintf(" else {\n\t%s = %s\n}", dstText, tmpName)
+
+	return []Edit{
+		{Start: lhsStart, End: lhsEnd, New: tmpName + ", " + errText},
+		{Start: rhsStart, End: rhsEnd, New: newCall},
+		{Start: bodyEnd, End: bodyEnd, New: elseBlock},
+	}
+}
+
+// exportTempName returns a function-scope-unique identifier for the
+// if-init temp. Falls back to a `<dst>V4Exported` form, then suffixes
+// with a counter if that name is already in scope at pos. Picking
+// the name from dst keeps the rewrite reading naturally — `keyV4Exported`
+// in the generated else line tells the reader exactly which dst the
+// temp is being assigned back to.
+func exportTempName(pf *ParsedGoFile, dst string, pos token.Pos) string {
+	base := dst + "V4Exported"
+	if !nameInScope(pf, base, pos) {
+		return base
+	}
+	for i := 2; i < 100; i++ {
+		candidate := fmt.Sprintf("%s%d", base, i)
+		if !nameInScope(pf, candidate, pos) {
+			return candidate
+		}
+	}
+	return base // last resort — caller will see a compile error
+}
+
+// nameInScope reports whether name is reachable from pos via the
+// innermost lexical scope chain. Returns false when the file has no
+// type info (no scopes were built); callers treat that as "name is
+// safe" since we're already in untyped fallback territory.
+func nameInScope(pf *ParsedGoFile, name string, pos token.Pos) bool {
+	if pf.TypesInfo == nil {
+		return false
+	}
+	pkgScope := pf.TypesInfo.Scopes[pf.ASTFile]
+	if pkgScope == nil {
+		return false
+	}
+	scope := pkgScope.Innermost(pos)
+	if scope == nil {
+		return false
+	}
+	_, obj := scope.LookupParent(name, pos)
+	return obj != nil
+}
+
+// fixJWKFromRawToImport rewrites the v2-only `<jwk>.FromRaw(raw)` →
+// `<jwk>.Import[<jwk>.Key](raw)`. Same shape as fixJWKImportGeneric but
+// also renames FromRaw → Import in one edit so the result is gofmt-stable
+// and we don't depend on edit ordering between two adjacent regions.
+func fixJWKFromRawToImport(node *ast.CallExpr, r *CompiledRule, byteOffset func(token.Pos) int) []Edit {
+	if r.ID != ruleJWKFromRawV2 {
+		return nil
+	}
+	sel, ok := node.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return nil
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	start := byteOffset(sel.Sel.Pos())
+	end := byteOffset(sel.Sel.End())
+	return []Edit{{Start: start, End: end, New: "Import[" + pkg.Name + ".Key]"}}
 }
 
 // fixSignatureChange handles function renames where v3 != v4.

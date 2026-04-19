@@ -22,7 +22,11 @@ const (
 
 // Rule IDs referenced by name in the fixer dispatcher.
 const (
-	ruleGetToField = "get-to-field"
+	ruleGetToField        = "get-to-field"
+	ruleJWKImportGeneric  = "jwk-import-generic"
+	ruleJWKImportGenericV = "jwk-import-generic-v2"
+	ruleJWKFromRawV2      = "jwk-fromraw-to-import-v2"
+	ruleJWKExportGeneric  = "jwk-export-generic"
 )
 
 // identAfterDot matches an identifier that follows a regex-escaped dot (`\.`).
