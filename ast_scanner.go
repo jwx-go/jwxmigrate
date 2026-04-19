@@ -13,7 +13,9 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
+	"sync"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -163,9 +165,39 @@ func checkGoFilesTyped(dir string, rules []CompiledRule, opts CheckOptions) ([]F
 		return nil, coveredFiles
 	}
 
+	// Each loadAndScanModule call spawns `go list` + type-checks a
+	// module, taking 70–300ms; on trees with many nested go.mods this
+	// dominates wallclock. Run them concurrently, bounded by
+	// GOMAXPROCS. Shared state (coveredFiles) is synchronized via mu;
+	// per-module findings are collected into fixed slots and merged
+	// after, so output order stays deterministic.
+	workers := min(runtime.GOMAXPROCS(0), len(moduleRoots))
+	perModule := make([][]Finding, len(moduleRoots))
+	var mu sync.Mutex
+	addCovered := func(files []string) {
+		mu.Lock()
+		for _, f := range files {
+			coveredFiles[f] = struct{}{}
+		}
+		mu.Unlock()
+	}
+	var wg sync.WaitGroup
+	jobs := make(chan int)
+	for range workers {
+		wg.Go(func() {
+			for i := range jobs {
+				perModule[i] = loadAndScanModule(moduleRoots[i], absDir, rules, opts, addCovered)
+			}
+		})
+	}
+	for i := range moduleRoots {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+
 	var findings []Finding
-	for _, modRoot := range moduleRoots {
-		ff := loadAndScanModule(modRoot, absDir, rules, opts, coveredFiles)
+	for _, ff := range perModule {
 		findings = append(findings, ff...)
 	}
 
@@ -197,10 +229,69 @@ func findModuleRoots(dir string) []string {
 	return roots
 }
 
+// moduleImportsSource reports whether any .go file under modRoot has at
+// least one import matching sourceImportPrefix. Uses parser.ImportsOnly
+// (imports-only parsing), which is ~100× cheaper than a full type-checked
+// packages.Load, so modules that don't touch jwx can skip the expensive
+// phase entirely.
+//
+// The walk stops at the first hit and prunes nested module roots so a
+// parent module's scan doesn't re-enter a submodule we'll visit
+// separately.
+func moduleImportsSource(modRoot string) bool {
+	fset := token.NewFileSet()
+	var found bool
+	_ = filepath.WalkDir(modRoot, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr
+		}
+		if found {
+			return filepath.SkipAll
+		}
+		if d.IsDir() {
+			if p != modRoot && shouldSkipWalkDir(d.Name()) {
+				return filepath.SkipDir
+			}
+			if p != modRoot {
+				if _, statErr := os.Stat(filepath.Join(p, goModFilename)); statErr == nil {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".go") {
+			return nil
+		}
+		f, parseErr := parser.ParseFile(fset, p, nil, parser.ImportsOnly)
+		if parseErr != nil {
+			// Unparseable file (e.g. testdata fixture) — skip and
+			// keep walking; peer files may still have v3 imports.
+			return nil //nolint:nilerr
+		}
+		for _, imp := range f.Imports {
+			importPath := strings.Trim(imp.Path.Value, `"`)
+			if strings.HasPrefix(importPath, sourceImportPrefix) {
+				found = true
+				return filepath.SkipAll
+			}
+		}
+		return nil
+	})
+	return found
+}
+
 // loadAndScanModule runs go/packages on a single module root and scans
-// the successfully type-checked files. Covered file paths are added to
-// the coveredFiles set.
-func loadAndScanModule(modRoot, topDir string, rules []CompiledRule, opts CheckOptions, coveredFiles map[string]struct{}) []Finding {
+// the successfully type-checked files. Covered file paths are reported
+// via addCovered (a sink rather than a raw map so callers can
+// synchronize concurrent module loads without exposing the mutex).
+func loadAndScanModule(modRoot, topDir string, rules []CompiledRule, opts CheckOptions, addCovered func([]string)) []Finding {
+	// Fast path: if the module has no source-version imports at all,
+	// skip the expensive packages.Load + type-check entirely. A user
+	// project may have dozens of modules where only one touches jwx.
+	if !moduleImportsSource(modRoot) {
+		return nil
+	}
+
 	cfg := &packages.Config{
 		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo |
 			packages.NeedFiles | packages.NeedName | packages.NeedImports | packages.NeedModule,
@@ -212,13 +303,14 @@ func loadAndScanModule(modRoot, topDir string, rules []CompiledRule, opts CheckO
 	}
 
 	var findings []Finding
+	var covered []string
 	for _, pkg := range pkgs {
 		if pkg.TypesInfo == nil || len(pkg.Errors) > 0 {
 			continue
 		}
 		for i, astFile := range pkg.Syntax {
 			filePath := pkg.GoFiles[i]
-			coveredFiles[filePath] = struct{}{}
+			covered = append(covered, filePath)
 
 			rel, relErr := filepath.Rel(topDir, filePath)
 			if relErr != nil {
@@ -249,6 +341,9 @@ func loadAndScanModule(modRoot, topDir string, rules []CompiledRule, opts CheckO
 		}
 	}
 
+	if len(covered) > 0 {
+		addCovered(covered)
+	}
 	return findings
 }
 
