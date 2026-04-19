@@ -4,3 +4,6 @@
 .worktrees/
 go.work
 go.work.sum
+
+# Local `go build` output (module name collides with the repo root)
+/jwxmigrate
