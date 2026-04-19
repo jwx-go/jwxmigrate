@@ -594,7 +594,7 @@ func ensureJWXImports(pf *ParsedGoFile, edits []taggedEdit, pending map[string]s
 		return edits
 	}
 	for v4Path, localName := range pending {
-		if _, already := importedAs(pf, v4Path); already {
+		if importedAs(pf, v4Path) {
 			continue
 		}
 		alias := ""
@@ -632,7 +632,7 @@ func ensureExtensionImports(pf *ParsedGoFile, edits []taggedEdit, rules []Compil
 			continue
 		}
 		seen[key] = struct{}{}
-		if _, already := importedAs(pf, r.ExtensionModule); already {
+		if importedAs(pf, r.ExtensionModule) {
 			continue
 		}
 		edits = appendImportEdit(pf, edits, byteOffset, newPkg, r.ExtensionModule, e.ruleID)
@@ -667,23 +667,18 @@ func appendImportEdit(pf *ParsedGoFile, edits []taggedEdit, byteOffset func(toke
 	})
 }
 
-// importedAs reports whether importPath is present in the file's imports
-// and, if so, the local name used to refer to it.
-func importedAs(pf *ParsedGoFile, importPath string) (string, bool) {
+// importedAs reports whether importPath is present in the file's imports.
+func importedAs(pf *ParsedGoFile, importPath string) bool {
 	for _, imp := range pf.ASTFile.Imports {
 		p, err := strconv.Unquote(imp.Path.Value)
 		if err != nil {
 			continue
 		}
-		if p != importPath {
-			continue
+		if p == importPath {
+			return true
 		}
-		if imp.Name != nil {
-			return imp.Name.Name, true
-		}
-		return goPkgName(importPath), true
 	}
-	return "", false
+	return false
 }
 
 // canFixWithTypes returns true if a non-mechanical rule has a fixer in this
