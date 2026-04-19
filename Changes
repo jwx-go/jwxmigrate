@@ -1,6 +1,14 @@
 Changes
 =======
 
+v4.0.1 19 Apr 2026
+  * Auto-fix jwk.Import / jwk.Export / jwk.FromRaw call sites.
+  * Auto-fix obj.Get(name, &dst) -> dst, err := pkg.Get[T](obj, name).
+  * Rewrite github.com/lestrrat-go/jwx/v3 -> v4 in go.mod on -fix, then run
+    `go mod tidy`.
+  * Major scanner speedup on large consumers via narrowed packages.Load,
+    per-module parallelism, and a per-batch typed-parse cache.
+
 v4.0.0 19 Apr 2026
   * Initial release. Migration tool and machine-readable rules for moving
     code from github.com/lestrrat-go/jwx/v3 (and v2) to v4.
