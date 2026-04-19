@@ -51,20 +51,20 @@ var _ = fmt.Println
 	require.Nil(t, pf, "file without v3 imports should return nil")
 }
 
-func TestModuleImportsSource(t *testing.T) {
+func TestPackagesImportingSource(t *testing.T) {
 	mod := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(mod, "go.mod"), []byte("module example.com/m\n\ngo 1.26\n"), 0o644))
 
-	// Bare module with nothing importing jwx: fast path should skip.
+	// Bare module with nothing importing jwx: empty result skips packages.Load.
 	require.NoError(t, os.WriteFile(filepath.Join(mod, "a.go"), []byte(`package m
 
 import "fmt"
 
 var _ = fmt.Println
 `), 0o644))
-	require.False(t, moduleImportsSource(mod))
+	require.Empty(t, packagesImportingSource(mod))
 
-	// Drop a v3 import into a subdir — should now detect.
+	// Drop a v3 import into one subdir — only that directory should be listed.
 	sub := filepath.Join(mod, "pkg")
 	require.NoError(t, os.MkdirAll(sub, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(sub, "b.go"), []byte(`package pkg
@@ -73,11 +73,28 @@ import "github.com/lestrrat-go/jwx/v3/jwk"
 
 var _ = jwk.Import
 `), 0o644))
-	require.True(t, moduleImportsSource(mod))
+	// Unrelated sibling: should NOT be in the result.
+	require.NoError(t, os.MkdirAll(filepath.Join(mod, "billing"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(mod, "billing", "b.go"), []byte(`package billing
 
-	// Nested go.mod must be pruned: if the v3 import lives only in a
-	// submodule, the parent scan should NOT report true (that submodule
-	// gets its own pass).
+import "fmt"
+
+var _ = fmt.Println
+`), 0o644))
+	require.Equal(t, []string{"./pkg"}, packagesImportingSource(mod))
+
+	// Root package also importing v3: "." should show up.
+	require.NoError(t, os.WriteFile(filepath.Join(mod, "a.go"), []byte(`package m
+
+import "github.com/lestrrat-go/jwx/v3/jwt"
+
+var _ = jwt.SubjectKey
+`), 0o644))
+	got := packagesImportingSource(mod)
+	require.ElementsMatch(t, []string{".", "./pkg"}, got)
+
+	// Nested go.mod must be pruned: v3 inside a submodule stays invisible
+	// to the parent scan.
 	nested := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(nested, "go.mod"), []byte("module example.com/parent\n\ngo 1.26\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(nested, "a.go"), []byte(`package parent
@@ -91,8 +108,8 @@ import "github.com/lestrrat-go/jwx/v3/jwk"
 
 var _ = jwk.Import
 `), 0o644))
-	require.False(t, moduleImportsSource(nested), "nested go.mod should prune scan")
-	require.True(t, moduleImportsSource(child))
+	require.Empty(t, packagesImportingSource(nested), "nested go.mod should prune scan")
+	require.Equal(t, []string{"."}, packagesImportingSource(child))
 }
 
 func TestNamePatternMatchesWildcardFamily(t *testing.T) {

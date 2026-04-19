@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 
@@ -229,24 +230,26 @@ func findModuleRoots(dir string) []string {
 	return roots
 }
 
-// moduleImportsSource reports whether any .go file under modRoot has at
-// least one import matching sourceImportPrefix. Uses parser.ImportsOnly
-// (imports-only parsing), which is ~100× cheaper than a full type-checked
-// packages.Load, so modules that don't touch jwx can skip the expensive
-// phase entirely.
+// packagesImportingSource returns the list of package directories within
+// modRoot that contain at least one .go file importing sourceImportPrefix,
+// formatted as packages.Load patterns (relative to modRoot, e.g. "." or
+// "./auth"). Uses parser.ImportsOnly (imports-only parsing), which is
+// ~100× cheaper than a type-checked packages.Load.
 //
-// The walk stops at the first hit and prunes nested module roots so a
-// parent module's scan doesn't re-enter a submodule we'll visit
-// separately.
-func moduleImportsSource(modRoot string) bool {
+// Narrowing the packages.Load target from "./..." to this list stops the
+// type checker from descending into sibling packages that were never
+// going to match anything — the main speedup on large codebases where
+// jwx only lives in a small fraction of packages. An empty result means
+// "module touches no jwx, skip packages.Load entirely".
+//
+// Nested module roots are pruned so a parent module's scan doesn't
+// re-enter a submodule we visit separately.
+func packagesImportingSource(modRoot string) []string {
 	fset := token.NewFileSet()
-	var found bool
+	dirs := make(map[string]struct{})
 	_ = filepath.WalkDir(modRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil //nolint:nilerr
-		}
-		if found {
-			return filepath.SkipAll
 		}
 		if d.IsDir() {
 			if p != modRoot && shouldSkipWalkDir(d.Name()) {
@@ -262,6 +265,10 @@ func moduleImportsSource(modRoot string) bool {
 		if !strings.HasSuffix(d.Name(), ".go") {
 			return nil
 		}
+		pkgDir := filepath.Dir(p)
+		if _, already := dirs[pkgDir]; already {
+			return nil
+		}
 		f, parseErr := parser.ParseFile(fset, p, nil, parser.ImportsOnly)
 		if parseErr != nil {
 			// Unparseable file (e.g. testdata fixture) — skip and
@@ -271,13 +278,29 @@ func moduleImportsSource(modRoot string) bool {
 		for _, imp := range f.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
 			if strings.HasPrefix(importPath, sourceImportPrefix) {
-				found = true
-				return filepath.SkipAll
+				dirs[pkgDir] = struct{}{}
+				break
 			}
 		}
 		return nil
 	})
-	return found
+	if len(dirs) == 0 {
+		return nil
+	}
+	patterns := make([]string, 0, len(dirs))
+	for d := range dirs {
+		rel, err := filepath.Rel(modRoot, d)
+		if err != nil {
+			continue
+		}
+		if rel == "." {
+			patterns = append(patterns, ".")
+		} else {
+			patterns = append(patterns, "./"+filepath.ToSlash(rel))
+		}
+	}
+	sort.Strings(patterns)
+	return patterns
 }
 
 // loadAndScanModule runs go/packages on a single module root and scans
@@ -285,10 +308,12 @@ func moduleImportsSource(modRoot string) bool {
 // via addCovered (a sink rather than a raw map so callers can
 // synchronize concurrent module loads without exposing the mutex).
 func loadAndScanModule(modRoot, topDir string, rules []CompiledRule, opts CheckOptions, addCovered func([]string)) []Finding {
-	// Fast path: if the module has no source-version imports at all,
-	// skip the expensive packages.Load + type-check entirely. A user
-	// project may have dozens of modules where only one touches jwx.
-	if !moduleImportsSource(modRoot) {
+	// Fast path: pre-scan at package granularity. An empty list means
+	// this module has zero jwx imports — skip packages.Load entirely.
+	// A non-empty list is narrower than "./..."; the type checker only
+	// descends into packages that could actually match, and their deps.
+	patterns := packagesImportingSource(modRoot)
+	if len(patterns) == 0 {
 		return nil
 	}
 
@@ -297,7 +322,7 @@ func loadAndScanModule(modRoot, topDir string, rules []CompiledRule, opts CheckO
 			packages.NeedFiles | packages.NeedName | packages.NeedImports | packages.NeedModule,
 		Dir: modRoot,
 	}
-	pkgs, err := packages.Load(cfg, "./...")
+	pkgs, err := packages.Load(cfg, patterns...)
 	if err != nil {
 		return nil
 	}
