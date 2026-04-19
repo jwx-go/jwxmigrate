@@ -162,6 +162,84 @@ var _ = jwk.Import
 	require.True(t, hasAST, "expected an AST match for jwk/x25519 import")
 }
 
+// TestLoadAndScanModule_TolerateTypeErrors pins the guard relaxation at
+// the top of the for-pkgs loop in loadAndScanModule. When a package has
+// type-check errors, the scanner must still surface findings rather than
+// dropping the whole package. Two realistic ways this bites in the wild:
+// a sibling file has an unrelated compile error, or the v3→v4 signature
+// changes themselves (jwk.Import needs a type arg, jwk.Export takes
+// fewer args) trip the type checker — which is exactly what the rule
+// exists to flag, so the guard used to eat its own reason for existing.
+func TestLoadAndScanModule_TolerateTypeErrors(t *testing.T) {
+	mod := t.TempDir()
+
+	// Stub the jwx v3 jwk package just enough that the main package's
+	// import resolves when the scanner runs in offline CI. The stub
+	// lives in a sibling directory and is wired in via `replace`.
+	stub := filepath.Join(mod, "stub")
+	require.NoError(t, os.MkdirAll(filepath.Join(stub, "jwk"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(stub, "go.mod"), []byte("module github.com/lestrrat-go/jwx/v3\n\ngo 1.21\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(stub, "jwk", "jwk.go"), []byte(`package jwk
+
+type Key interface{}
+
+func Import(raw any) (Key, error) { return nil, nil }
+`), 0o644))
+
+	require.NoError(t, os.WriteFile(filepath.Join(mod, "go.mod"), []byte(`module example.com/m
+
+go 1.21
+
+require github.com/lestrrat-go/jwx/v3 v3.0.0
+
+replace github.com/lestrrat-go/jwx/v3 => ./stub
+`), 0o644))
+
+	// Main file: a legitimate v3 jwk.Import call site the scanner must
+	// flag for jwk-import-generic. Type-checks fine against the stub.
+	require.NoError(t, os.WriteFile(filepath.Join(mod, "main.go"), []byte(`package m
+
+import "github.com/lestrrat-go/jwx/v3/jwk"
+
+func Run(raw any) {
+	k, _ := jwk.Import(raw)
+	_ = k
+}
+`), 0o644))
+
+	// Sibling file: a deliberate compile error in the same package.
+	// Without the guard relaxation, packages.Load reports pkg.Errors>0
+	// and loadAndScanModule would drop every file in the package —
+	// including main.go's jwk.Import site.
+	require.NoError(t, os.WriteFile(filepath.Join(mod, "broken.go"), []byte(`package m
+
+var _ = undefinedSymbolThatDoesNotExist
+`), 0o644))
+
+	rules, err := loadRules("v3-to-v4")
+	require.NoError(t, err)
+
+	// Drive the typed path directly. A covered main.go proves the
+	// package was not dropped by the guard; Check()'s AST-only phase-2
+	// fallback would also surface a finding but leaves coveredFiles
+	// empty, which is what the pre-fix code produces.
+	findings, coveredFiles := checkGoFilesTyped(mod, rules, CheckOptions{RuleID: "jwk-import-generic"})
+
+	mainAbs, err := filepath.Abs(filepath.Join(mod, "main.go"))
+	require.NoError(t, err)
+	_, covered := coveredFiles[mainAbs]
+	require.True(t, covered, "typed scan dropped %s despite pkg.Errors>0; coveredFiles=%v", mainAbs, coveredFiles)
+
+	var saw bool
+	for _, f := range findings {
+		if f.RuleID == "jwk-import-generic" {
+			saw = true
+			break
+		}
+	}
+	require.True(t, saw, "typed scan did not surface jwk-import-generic finding; got %+v", findings)
+}
+
 func TestGoPkgName(t *testing.T) {
 	tests := []struct {
 		importPath string
