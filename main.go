@@ -97,7 +97,7 @@ func runFix(target string, rules []CompiledRule, opts FixOptions) (int, error) {
 
 	var files []string
 	if info.IsDir() {
-		files, err = findGoFiles(target)
+		files, err = findFixableFiles(target)
 		if err != nil {
 			return 0, err
 		}
@@ -131,7 +131,7 @@ type fixBatchSummary struct {
 func fixFiles(files []string, rules []CompiledRule, opts FixOptions, out, errw io.Writer) fixBatchSummary {
 	var summary fixBatchSummary
 	for _, f := range files {
-		result, err := FixFileWithOptions(f, rules, opts)
+		result, err := fixOneFile(f, rules, opts)
 		if err != nil {
 			summary.failures = append(summary.failures, fixFailure{file: f, err: err})
 			_, _ = fmt.Fprintf(errw, "%s: skipped: %s\n", f, err)
@@ -170,7 +170,21 @@ func fixFiles(files []string, rules []CompiledRule, opts FixOptions, out, errw i
 	return summary
 }
 
-func findGoFiles(dir string) ([]string, error) {
+// fixOneFile dispatches to the right fixer based on the file's basename:
+// .go files use the AST-based FixFileWithOptions, go.mod uses the
+// modfile-based FixBuildFile. Anything else returns nil so the caller
+// treats it as a no-op.
+func fixOneFile(filePath string, rules []CompiledRule, opts FixOptions) (*FixResult, error) {
+	if strings.HasSuffix(filePath, ".go") {
+		return FixFileWithOptions(filePath, rules, opts)
+	}
+	return FixBuildFile(filePath, rules)
+}
+
+// findFixableFiles returns every .go file under dir plus every go.mod
+// file the fixer knows how to rewrite. Build files other than go.mod
+// stay check-only for now.
+func findFixableFiles(dir string) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -183,7 +197,7 @@ func findGoFiles(dir string) ([]string, error) {
 			}
 			return nil
 		}
-		if strings.HasSuffix(name, ".go") {
+		if strings.HasSuffix(name, ".go") || name == goModFilename {
 			files = append(files, path)
 		}
 		return nil
