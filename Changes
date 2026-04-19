@@ -1,0 +1,6 @@
+Changes
+=======
+
+v4.0.0 19 Apr 2026
+  * Initial release. Migration tool and machine-readable rules for moving
+    code from github.com/lestrrat-go/jwx/v3 (and v2) to v4.
