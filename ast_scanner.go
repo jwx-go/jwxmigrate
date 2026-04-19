@@ -151,19 +151,22 @@ func parseGoFileTyped(filePath string, overlay map[string][]byte) *ParsedGoFile 
 
 // checkGoFilesTyped discovers all Go module roots under dir and uses
 // go/packages to load packages with type information from each.
-// Returns findings and the set of absolute file paths that were processed.
-func checkGoFilesTyped(dir string, rules []CompiledRule, opts CheckOptions) ([]Finding, map[string]struct{}) {
+// Returns findings, the set of absolute file paths that were
+// type-checked, and the per-module prescans so the caller can drive
+// phase 2 from the already-parsed v3-importing file set instead of
+// re-walking the whole tree and re-parsing every .go file.
+func checkGoFilesTyped(dir string, rules []CompiledRule, opts CheckOptions) ([]Finding, map[string]struct{}, []modulePrescan) {
 	coveredFiles := make(map[string]struct{})
 
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
-		return nil, coveredFiles
+		return nil, coveredFiles, nil
 	}
 
 	// Discover all module roots (directories containing go.mod).
 	moduleRoots := findModuleRoots(absDir)
 	if len(moduleRoots) == 0 {
-		return nil, coveredFiles
+		return nil, coveredFiles, nil
 	}
 
 	// Each loadAndScanModule call spawns `go list` + type-checks a
@@ -174,6 +177,7 @@ func checkGoFilesTyped(dir string, rules []CompiledRule, opts CheckOptions) ([]F
 	// after, so output order stays deterministic.
 	workers := min(runtime.GOMAXPROCS(0), len(moduleRoots))
 	perModule := make([][]Finding, len(moduleRoots))
+	prescans := make([]modulePrescan, len(moduleRoots))
 	var mu sync.Mutex
 	addCovered := func(files []string) {
 		mu.Lock()
@@ -187,7 +191,8 @@ func checkGoFilesTyped(dir string, rules []CompiledRule, opts CheckOptions) ([]F
 	for range workers {
 		wg.Go(func() {
 			for i := range jobs {
-				perModule[i] = loadAndScanModule(moduleRoots[i], absDir, rules, opts, addCovered)
+				prescans[i] = prescanModule(moduleRoots[i])
+				perModule[i] = loadAndScanModule(prescans[i], absDir, rules, opts, addCovered)
 			}
 		})
 	}
@@ -202,7 +207,7 @@ func checkGoFilesTyped(dir string, rules []CompiledRule, opts CheckOptions) ([]F
 		findings = append(findings, ff...)
 	}
 
-	return findings, coveredFiles
+	return findings, coveredFiles, prescans
 }
 
 // findModuleRoots walks the directory tree and returns all directories
@@ -230,23 +235,38 @@ func findModuleRoots(dir string) []string {
 	return roots
 }
 
-// packagesImportingSource returns the list of package directories within
-// modRoot that contain at least one .go file importing sourceImportPrefix,
-// formatted as packages.Load patterns (relative to modRoot, e.g. "." or
-// "./auth"). Uses parser.ImportsOnly (imports-only parsing), which is
-// ~100× cheaper than a type-checked packages.Load.
+// modulePrescan is the result of walking a single module's .go files
+// with imports-only parsing. Callers use it for two things:
+//   - Patterns is the minimal set of package directories to hand to
+//     packages.Load (narrower than "./..." when jwx lives in a subset
+//     of packages, empty when no file imports jwx at all).
+//   - V3Files is the absolute path of every .go file whose imports
+//     include sourceImportPrefix. The untyped phase-2 scanner uses this
+//     to avoid re-walking the module and re-parsing every .go file just
+//     to re-derive information we already have.
+type modulePrescan struct {
+	Root     string
+	Patterns []string
+	V3Files  []string
+}
+
+// prescanModule walks modRoot and records, per .go file, whether it
+// imports sourceImportPrefix. Uses parser.ImportsOnly, which is ~100×
+// cheaper than a full type-checked packages.Load.
 //
-// Narrowing the packages.Load target from "./..." to this list stops the
-// type checker from descending into sibling packages that were never
-// going to match anything — the main speedup on large codebases where
-// jwx only lives in a small fraction of packages. An empty result means
-// "module touches no jwx, skip packages.Load entirely".
+// Narrowing packages.Load from "./..." to Patterns stops the type
+// checker from descending into sibling packages that were never going
+// to match anything — the main speedup on large codebases where jwx
+// only lives in a small fraction of packages. Reusing V3Files lets the
+// untyped phase-2 scanner skip a whole-tree walk on files we've already
+// determined have no v3 imports.
 //
 // Nested module roots are pruned so a parent module's scan doesn't
 // re-enter a submodule we visit separately.
-func packagesImportingSource(modRoot string) []string {
+func prescanModule(modRoot string) modulePrescan {
 	fset := token.NewFileSet()
 	dirs := make(map[string]struct{})
+	var v3Files []string
 	_ = filepath.WalkDir(modRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil //nolint:nilerr
@@ -265,10 +285,6 @@ func packagesImportingSource(modRoot string) []string {
 		if !strings.HasSuffix(d.Name(), ".go") {
 			return nil
 		}
-		pkgDir := filepath.Dir(p)
-		if _, already := dirs[pkgDir]; already {
-			return nil
-		}
 		f, parseErr := parser.ParseFile(fset, p, nil, parser.ImportsOnly)
 		if parseErr != nil {
 			// Unparseable file (e.g. testdata fixture) — skip and
@@ -278,14 +294,15 @@ func packagesImportingSource(modRoot string) []string {
 		for _, imp := range f.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
 			if strings.HasPrefix(importPath, sourceImportPrefix) {
-				dirs[pkgDir] = struct{}{}
+				dirs[filepath.Dir(p)] = struct{}{}
+				v3Files = append(v3Files, p)
 				break
 			}
 		}
 		return nil
 	})
 	if len(dirs) == 0 {
-		return nil
+		return modulePrescan{Root: modRoot}
 	}
 	patterns := make([]string, 0, len(dirs))
 	for d := range dirs {
@@ -300,29 +317,29 @@ func packagesImportingSource(modRoot string) []string {
 		}
 	}
 	sort.Strings(patterns)
-	return patterns
+	return modulePrescan{Root: modRoot, Patterns: patterns, V3Files: v3Files}
 }
 
 // loadAndScanModule runs go/packages on a single module root and scans
 // the successfully type-checked files. Covered file paths are reported
 // via addCovered (a sink rather than a raw map so callers can
 // synchronize concurrent module loads without exposing the mutex).
-func loadAndScanModule(modRoot, topDir string, rules []CompiledRule, opts CheckOptions, addCovered func([]string)) []Finding {
-	// Fast path: pre-scan at package granularity. An empty list means
-	// this module has zero jwx imports — skip packages.Load entirely.
-	// A non-empty list is narrower than "./..."; the type checker only
-	// descends into packages that could actually match, and their deps.
-	patterns := packagesImportingSource(modRoot)
-	if len(patterns) == 0 {
+//
+// An empty ps.Patterns means this module has zero jwx imports — skip
+// packages.Load entirely. A non-empty set is narrower than "./...";
+// the type checker only descends into packages that could actually
+// match, and their deps.
+func loadAndScanModule(ps modulePrescan, topDir string, rules []CompiledRule, opts CheckOptions, addCovered func([]string)) []Finding {
+	if len(ps.Patterns) == 0 {
 		return nil
 	}
 
 	cfg := &packages.Config{
 		Mode: packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo |
 			packages.NeedFiles | packages.NeedName | packages.NeedImports | packages.NeedModule,
-		Dir: modRoot,
+		Dir: ps.Root,
 	}
-	pkgs, err := packages.Load(cfg, patterns...)
+	pkgs, err := packages.Load(cfg, ps.Patterns...)
 	if err != nil {
 		return nil
 	}

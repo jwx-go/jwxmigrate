@@ -69,7 +69,43 @@ func TestCheckBuildFilesRecursive(t *testing.T) {
 	}
 }
 
-// TestCheckBuildFilesLongLine verifies that scanFileForRule does not
+// TestCheckBuildFilesSharedFilePattern verifies that when multiple rules
+// target the same file_pattern (e.g. four v3→v4 rules all list "*.sh"),
+// a matching file is opened and scanned exactly once and every rule that
+// matches a line is reported. Prior to the single-pass refactor the file
+// was opened once per matching rule.
+func TestCheckBuildFilesSharedFilePattern(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "run.sh"), []byte(
+		"#!/bin/sh\ngo test -tags jwx_goccy,jwx_asmbase64 ./...\n",
+	), 0o644))
+
+	mkRule := func(id, pat string) CompiledRule {
+		return CompiledRule{
+			Rule: Rule{
+				ID:           id,
+				Mechanical:   true,
+				FilePatterns: []string{"*.sh"},
+			},
+			Patterns: []*regexp.Regexp{regexp.MustCompile(pat)},
+		}
+	}
+	rules := []CompiledRule{
+		mkRule("build-tag-goccy", `jwx_goccy`),
+		mkRule("build-tag-asmbase64", `jwx_asmbase64`),
+	}
+
+	findings := checkBuildFiles(dir, rules, CheckOptions{})
+	ids := map[string]int{}
+	for _, f := range findings {
+		ids[f.RuleID]++
+		require.Equal(t, "run.sh", f.File)
+	}
+	require.Equal(t, 1, ids["build-tag-goccy"])
+	require.Equal(t, 1, ids["build-tag-asmbase64"])
+}
+
+// TestCheckBuildFilesLongLine verifies that the file scanner does not
 // silently skip build files containing a line longer than bufio.Scanner's
 // default 64 KiB cap. A 16 MiB per-line buffer is configured to cover
 // realistic generated/minified content. See review item

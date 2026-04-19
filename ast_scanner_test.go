@@ -51,23 +51,27 @@ var _ = fmt.Println
 	require.Nil(t, pf, "file without v3 imports should return nil")
 }
 
-func TestPackagesImportingSource(t *testing.T) {
+func TestPrescanModule(t *testing.T) {
 	mod := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(mod, "go.mod"), []byte("module example.com/m\n\ngo 1.26\n"), 0o644))
 
-	// Bare module with nothing importing jwx: empty result skips packages.Load.
+	// Bare module with nothing importing jwx: empty Patterns skips packages.Load,
+	// empty V3Files skips phase 2.
 	require.NoError(t, os.WriteFile(filepath.Join(mod, "a.go"), []byte(`package m
 
 import "fmt"
 
 var _ = fmt.Println
 `), 0o644))
-	require.Empty(t, packagesImportingSource(mod))
+	ps := prescanModule(mod)
+	require.Empty(t, ps.Patterns)
+	require.Empty(t, ps.V3Files)
 
 	// Drop a v3 import into one subdir — only that directory should be listed.
 	sub := filepath.Join(mod, "pkg")
 	require.NoError(t, os.MkdirAll(sub, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(sub, "b.go"), []byte(`package pkg
+	bGo := filepath.Join(sub, "b.go")
+	require.NoError(t, os.WriteFile(bGo, []byte(`package pkg
 
 import "github.com/lestrrat-go/jwx/v3/jwk"
 
@@ -81,17 +85,21 @@ import "fmt"
 
 var _ = fmt.Println
 `), 0o644))
-	require.Equal(t, []string{"./pkg"}, packagesImportingSource(mod))
+	ps = prescanModule(mod)
+	require.Equal(t, []string{"./pkg"}, ps.Patterns)
+	require.Equal(t, []string{bGo}, ps.V3Files)
 
 	// Root package also importing v3: "." should show up.
-	require.NoError(t, os.WriteFile(filepath.Join(mod, "a.go"), []byte(`package m
+	aGo := filepath.Join(mod, "a.go")
+	require.NoError(t, os.WriteFile(aGo, []byte(`package m
 
 import "github.com/lestrrat-go/jwx/v3/jwt"
 
 var _ = jwt.SubjectKey
 `), 0o644))
-	got := packagesImportingSource(mod)
-	require.ElementsMatch(t, []string{".", "./pkg"}, got)
+	ps = prescanModule(mod)
+	require.ElementsMatch(t, []string{".", "./pkg"}, ps.Patterns)
+	require.ElementsMatch(t, []string{aGo, bGo}, ps.V3Files)
 
 	// Nested go.mod must be pruned: v3 inside a submodule stays invisible
 	// to the parent scan.
@@ -108,8 +116,8 @@ import "github.com/lestrrat-go/jwx/v3/jwk"
 
 var _ = jwk.Import
 `), 0o644))
-	require.Empty(t, packagesImportingSource(nested), "nested go.mod should prune scan")
-	require.Equal(t, []string{"."}, packagesImportingSource(child))
+	require.Empty(t, prescanModule(nested).Patterns, "nested go.mod should prune scan")
+	require.Equal(t, []string{"."}, prescanModule(child).Patterns)
 }
 
 func TestNamePatternMatchesWildcardFamily(t *testing.T) {
@@ -240,7 +248,7 @@ var _ = undefinedSymbolThatDoesNotExist
 	// package was not dropped by the guard; Check()'s AST-only phase-2
 	// fallback would also surface a finding but leaves coveredFiles
 	// empty, which is what the pre-fix code produces.
-	findings, coveredFiles := checkGoFilesTyped(mod, rules, CheckOptions{RuleID: "jwk-import-generic"})
+	findings, coveredFiles, _ := checkGoFilesTyped(mod, rules, CheckOptions{RuleID: "jwk-import-generic"})
 
 	mainAbs, err := filepath.Abs(filepath.Join(mod, "main.go"))
 	require.NoError(t, err)
