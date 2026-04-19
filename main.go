@@ -144,6 +144,9 @@ func fixFiles(files []string, rules []CompiledRule, opts FixOptions, out, errw i
 	var summary fixBatchSummary
 	overlay := snapshotBatchOverlay(files)
 	opts.overlay = overlay
+	if opts.typedCache == nil {
+		opts.typedCache = buildTypedFileCache(files, overlay)
+	}
 	for _, f := range files {
 		result, err := fixOneFile(f, rules, opts)
 		if err != nil {

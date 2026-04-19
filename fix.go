@@ -47,6 +47,14 @@ type FixOptions struct {
 	// Set by fixFiles for batch runs; nil for single-file callers (their
 	// type loading is consistent by construction).
 	overlay map[string][]byte
+
+	// typedCache, when non-nil, is a pre-populated map from absolute file
+	// path to a fully type-checked ParsedGoFile. FixFileWithOptions looks
+	// up each file in this map before falling back to the untyped parse
+	// path, skipping parseGoFileTyped entirely — the batch avoids invoking
+	// packages.Load once per file. Cache miss is treated as "no v3
+	// imports" since the cache builder only records v3-importing files.
+	typedCache map[string]*ParsedGoFile
 }
 
 // FixFile applies mechanical fixes to a single Go file in-place.
@@ -58,8 +66,19 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 
 // FixFileWithOptions is FixFile with caller-supplied FixOptions.
 func FixFileWithOptions(filePath string, rules []CompiledRule, opts FixOptions) (*FixResult, error) {
-	// Try type-checked loading first for type-aware fixes.
-	pf := parseGoFileTyped(filePath, opts.overlay)
+	// Try type-checked loading first for type-aware fixes. When the batch
+	// provided a typedCache we consult it directly and skip parseGoFileTyped
+	// on miss — a miss means the prescan saw no v3 imports, so invoking
+	// packages.Load here would waste a full module type-check just to
+	// discover the same thing.
+	var pf *ParsedGoFile
+	if opts.typedCache != nil {
+		if abs, err := filepath.Abs(filePath); err == nil {
+			pf = opts.typedCache[abs]
+		}
+	} else {
+		pf = parseGoFileTyped(filePath, opts.overlay)
+	}
 	if pf == nil {
 		var err error
 		pf, err = parseGoFile(filePath, filePath)
