@@ -121,6 +121,10 @@ type fixBatchSummary struct {
 	totalFixed int
 	remaining  []Finding
 	failures   []fixFailure
+	// goModDirs is the set of absolute directories whose go.mod was
+	// rewritten during this batch, used to drive the follow-up
+	// `go mod tidy` step. Order matches first rewrite.
+	goModDirs []string
 }
 
 // fixFiles applies FixFile to every file and keeps going when individual
@@ -153,8 +157,20 @@ func fixFiles(files []string, rules []CompiledRule, opts FixOptions, out, errw i
 		if len(result.Applied) > 0 {
 			summary.totalFixed += len(result.Applied)
 			_, _ = fmt.Fprintf(out, "%s: applied %s\n", result.File, strings.Join(result.Applied, ", "))
+			if filepath.Base(result.File) == goModFilename {
+				if abs, absErr := filepath.Abs(filepath.Dir(result.File)); absErr == nil {
+					summary.goModDirs = append(summary.goModDirs, abs)
+				}
+			}
 		}
 		summary.remaining = append(summary.remaining, result.Remaining...)
+	}
+
+	for _, dir := range summary.goModDirs {
+		_, _ = fmt.Fprintf(out, "%s: running go mod tidy\n", dir)
+		if err := runGoModTidy(dir, out, errw); err != nil {
+			_, _ = fmt.Fprintf(errw, "%s: go mod tidy failed: %s\n", dir, err)
+		}
 	}
 
 	if summary.totalFixed == 0 {
