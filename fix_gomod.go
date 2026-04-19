@@ -9,6 +9,10 @@ import (
 	"golang.org/x/mod/modfile"
 )
 
+// goModFilename is the canonical filename of a Go module file, used by the
+// build-file dispatcher and the fixable-file walker.
+const goModFilename = "go.mod"
+
 // latestV4Version is the jwx/v4 module version that go.mod rewrites pin to.
 // Bump on every jwxmigrate release that needs to track a newer v4 minimum.
 // Users typically follow up with `go mod tidy`, which will float the
@@ -21,7 +25,7 @@ const latestV4Version = "v4.0.0"
 // or has no applicable changes — callers treat nil like FixFile does.
 func FixBuildFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 	switch filepath.Base(filePath) {
-	case "go.mod":
+	case goModFilename:
 		return fixGoMod(filePath, rules)
 	}
 	return nil, nil //nolint:nilnil

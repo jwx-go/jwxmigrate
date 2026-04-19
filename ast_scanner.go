@@ -169,7 +169,7 @@ func findModuleRoots(dir string) []string {
 			}
 			return nil
 		}
-		if name == "go.mod" {
+		if name == goModFilename {
 			roots = append(roots, filepath.Dir(p))
 		}
 		return nil

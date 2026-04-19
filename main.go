@@ -197,7 +197,7 @@ func findFixableFiles(dir string) ([]string, error) {
 			}
 			return nil
 		}
-		if strings.HasSuffix(name, ".go") || name == "go.mod" {
+		if strings.HasSuffix(name, ".go") || name == goModFilename {
 			files = append(files, path)
 		}
 		return nil
