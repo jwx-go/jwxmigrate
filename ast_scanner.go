@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -688,6 +689,9 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 					if !rm.matcher.MatchesName(funcName) {
 						continue
 					}
+					if !ruleArgPredicateOK(rm.rule, node) {
+						continue
+					}
 					if matchesPkg(ident.Name, rm.matcher.PkgName) {
 						addFinding(rm.rule, node, "CallExpr")
 						continue
@@ -938,6 +942,21 @@ func sourceLineAt(src []byte, line int) string {
 		i++
 	}
 	return ""
+}
+
+// ruleArgPredicateOK is a per-rule precondition gate applied during call-
+// expression matching. Most rules don't need it; rules that fix a
+// specific call shape return false for calls that lack the shape, so
+// the finding (and its note text) only fires on calls the fixer would
+// actually rewrite. Without this, an LLM-driven migration consuming
+// --format json could follow a misleading note and rewrite calls that
+// already have the right shape — for jwt-withverify-false-to-parseinsecure-v2,
+// that means silently disabling signature verification.
+func ruleArgPredicateOK(r *CompiledRule, call *ast.CallExpr) bool {
+	if r.ID != "jwt-withverify-false-to-parseinsecure-v2" {
+		return true
+	}
+	return slices.ContainsFunc(call.Args, isWithVerifyFalse)
 }
 
 // extractNodeText extracts the source text corresponding to an AST node.

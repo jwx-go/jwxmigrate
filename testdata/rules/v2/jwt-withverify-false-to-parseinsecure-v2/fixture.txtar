@@ -10,13 +10,21 @@ import (
 // jwt.WithVerify(false) argument via the existing fixWithVerifyFalse
 // rewriter.
 //
+// PRECISION: the rule fires ONLY when a literal jwt.WithVerify(false)
+// argument is present. Bare jwt.Parse / jwt.ParseString calls — which
+// already verify signatures — must NOT be flagged. The note text
+// suggests ParseInsecure, and an LLM-driven migration consuming
+// --format json could otherwise rewrite a signature-verifying call
+// into ParseInsecure and silently disable verification. This precondition
+// is enforced by ruleArgPredicateOK during AST matching.
+//
 // KNOWN GAP: deriveSignatureChange extracts only the v2 field
 // ("ParseString") as the matcher name, not every search_patterns entry.
 // So this rule currently fires only on ParseString calls, missing Parse
-// calls (which have the same v2/v4 mapping). The Parse call on line 17
-// below is captured in the golden verbatim (unmodified) to surface this
-// gap — it should be regenerated when deriveSignatureChange learns to
-// extract multiple names like deriveRemovedOrMoved does.
+// calls (which have the same v2/v4 mapping). The Parse-with-WithVerify(false)
+// call below is captured in the golden verbatim (unmodified) to surface
+// this gap — it should be regenerated when deriveSignatureChange learns
+// to extract multiple names like deriveRemovedOrMoved does.
 
 func insecure(data string) (jwt.Token, error) {
 	return jwt.ParseString(data, jwt.WithVerify(false))
@@ -25,8 +33,19 @@ func insecure(data string) (jwt.Token, error) {
 func insecureBytes(data []byte) (jwt.Token, error) {
 	return jwt.Parse(data, jwt.WithVerify(false))
 }
+
+// Bare verifying call: must NOT be flagged. Suggesting ParseInsecure
+// here would silently strip the signature check.
+func verifying(data string) (jwt.Token, error) {
+	return jwt.ParseString(data)
+}
+
+// Same shape with []byte: also must NOT be flagged.
+func verifyingBytes(data []byte) (jwt.Token, error) {
+	return jwt.Parse(data)
+}
 -- want_check.txt --
-main.go:21: [jwt-withverify-false-to-parseinsecure-v2] (mechanical) jwt.ParseString(data, jwt.WithVerify(false))
+main.go:29: [jwt-withverify-false-to-parseinsecure-v2] (mechanical) jwt.ParseString(data, jwt.WithVerify(false))
 
 total=1 mechanical=1 manual=0
 -- want_fix/main.go --
@@ -41,13 +60,21 @@ import (
 // jwt.WithVerify(false) argument via the existing fixWithVerifyFalse
 // rewriter.
 //
+// PRECISION: the rule fires ONLY when a literal jwt.WithVerify(false)
+// argument is present. Bare jwt.Parse / jwt.ParseString calls — which
+// already verify signatures — must NOT be flagged. The note text
+// suggests ParseInsecure, and an LLM-driven migration consuming
+// --format json could otherwise rewrite a signature-verifying call
+// into ParseInsecure and silently disable verification. This precondition
+// is enforced by ruleArgPredicateOK during AST matching.
+//
 // KNOWN GAP: deriveSignatureChange extracts only the v2 field
 // ("ParseString") as the matcher name, not every search_patterns entry.
 // So this rule currently fires only on ParseString calls, missing Parse
-// calls (which have the same v2/v4 mapping). The Parse call on line 17
-// below is captured in the golden verbatim (unmodified) to surface this
-// gap — it should be regenerated when deriveSignatureChange learns to
-// extract multiple names like deriveRemovedOrMoved does.
+// calls (which have the same v2/v4 mapping). The Parse-with-WithVerify(false)
+// call below is captured in the golden verbatim (unmodified) to surface
+// this gap — it should be regenerated when deriveSignatureChange learns
+// to extract multiple names like deriveRemovedOrMoved does.
 
 func insecure(data string) (jwt.Token, error) {
 	return jwt.ParseInsecure([]byte(data))
@@ -55,4 +82,15 @@ func insecure(data string) (jwt.Token, error) {
 
 func insecureBytes(data []byte) (jwt.Token, error) {
 	return jwt.Parse(data, jwt.WithVerify(false))
+}
+
+// Bare verifying call: must NOT be flagged. Suggesting ParseInsecure
+// here would silently strip the signature check.
+func verifying(data string) (jwt.Token, error) {
+	return jwt.ParseString(data)
+}
+
+// Same shape with []byte: also must NOT be flagged.
+func verifyingBytes(data []byte) (jwt.Token, error) {
+	return jwt.Parse(data)
 }
