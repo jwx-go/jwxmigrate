@@ -36,6 +36,10 @@ func run(args []string) (int, error) {
 	if fset.NArg() > 0 {
 		target = fset.Arg(0)
 	}
+	target, err := normalizeTarget(target)
+	if err != nil {
+		return 0, err
+	}
 
 	migration := *from + "-to-v4"
 	rules, err := loadRules(migration)
@@ -246,6 +250,36 @@ func snapshotBatchOverlay(files []string) map[string][]byte {
 		out[abs] = data
 	}
 	return out
+}
+
+// normalizeTarget accepts the Go-style recursive pattern users naturally type
+// (`./...`, `pkg/...`) and rewrites it to a directory the rest of the tool can
+// stat and walk. Only the trailing `/...` segment is supported — full
+// `go list` pattern semantics aren't.
+func normalizeTarget(s string) (string, error) {
+	if s == "" {
+		return "", nil
+	}
+	if !strings.Contains(s, "...") {
+		return s, nil
+	}
+	if s == "..." {
+		return ".", nil
+	}
+	if !strings.HasSuffix(s, "/...") {
+		return "", fmt.Errorf("unsupported pattern %q: \"...\" only allowed as trailing segment, e.g. \"./...\" or \"./pkg/...\"", s)
+	}
+	prefix := strings.TrimSuffix(s, "/...")
+	if strings.Contains(prefix, "...") {
+		return "", fmt.Errorf("unsupported pattern %q: only one trailing \"...\" is supported", s)
+	}
+	if prefix == "" {
+		return "", fmt.Errorf("unsupported pattern %q", s)
+	}
+	if prefix == "." {
+		return ".", nil
+	}
+	return prefix, nil
 }
 
 // findFixableFiles returns every .go file under dir plus every go.mod
