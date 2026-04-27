@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -131,26 +130,8 @@ func TestFixFilesSkipsGoModTidyWhenNoGoModRewritten(t *testing.T) {
 	require.Empty(t, *calls, "no go.mod was rewritten, tidy must not run")
 }
 
-// TestFixFilesTidyFailureIsWarningOnly pins that a failing `go mod tidy`
-// does not get folded into summary.failures. The go.mod rewrite already
-// succeeded; tidy is best-effort follow-up and its failure gets surfaced
-// as a stderr warning so users can rerun it manually.
-func TestFixFilesTidyFailureIsWarningOnly(t *testing.T) {
-	rules, err := loadRules("v3-to-v4")
-	require.NoError(t, err)
-
-	dir := t.TempDir()
-	gomod := filepath.Join(dir, goModFilename)
-	require.NoError(t, os.WriteFile(gomod, []byte(
-		"module example\n\ngo 1.25\n\nrequire github.com/lestrrat-go/jwx/v3 v3.0.13\n",
-	), 0o644))
-
-	stubTidyRunner(t, errors.New("boom"))
-
-	var out, errw bytes.Buffer
-	summary := fixFiles([]string{gomod}, rules, FixOptions{}, &out, &errw)
-
-	require.Empty(t, summary.failures, "tidy failure must not be recorded as a fix failure")
-	require.Contains(t, errw.String(), "go mod tidy")
-	require.Contains(t, errw.String(), "boom")
-}
+// (TestFixFilesTidyFailureIsWarningOnly was inverted by the
+// JWXMIGRATE-002 fix — see TestFixFiles_TidyFailureSurfaces in
+// fix_robustness_test.go for the new contract: a failing
+// `go mod tidy` is now recorded in summary.failures so runFix
+// returns a non-zero exit code.)
