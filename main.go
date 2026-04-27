@@ -90,14 +90,21 @@ func runCheck(dir string, rules []CompiledRule, format string, mechanicalOnly bo
 }
 
 func runFix(target string, rules []CompiledRule, opts FixOptions) (int, error) {
-	info, err := os.Stat(target)
+	// Lstat (not Stat) so we can refuse to follow a symlink target. The
+	// rewrite path renames a sibling temp over `target`, so handing it a
+	// symlink would replace the link with a regular file containing the
+	// resolved file's rewritten content — silently destroying the link.
+	info, err := os.Lstat(target)
 	if err != nil {
 		return 0, fmt.Errorf("cannot access %s: %w", target, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return 0, fmt.Errorf("refusing to fix %s: symlinks are not followed (atomic rewrite would replace the link with a regular file)", target)
 	}
 
 	var files []string
 	if info.IsDir() {
-		files, err = findFixableFiles(target)
+		files, err = findFixableFiles(target, os.Stderr)
 		if err != nil {
 			return 0, err
 		}
@@ -173,6 +180,13 @@ func fixFiles(files []string, rules []CompiledRule, opts FixOptions, out, errw i
 		_, _ = fmt.Fprintf(out, "%s: running go mod tidy\n", dir)
 		if err := runGoModTidy(dir, out, errw); err != nil {
 			_, _ = fmt.Fprintf(errw, "%s: go mod tidy failed: %s\n", dir, err)
+			// Track the failure so runFix returns a non-zero exit
+			// code. Without this the rewrite is reported as a
+			// success while the working tree is unbuildable.
+			summary.failures = append(summary.failures, fixFailure{
+				file: filepath.Join(dir, goModFilename),
+				err:  fmt.Errorf("go mod tidy: %w", err),
+			})
 		}
 	}
 
@@ -237,7 +251,13 @@ func snapshotBatchOverlay(files []string) map[string][]byte {
 // findFixableFiles returns every .go file under dir plus every go.mod
 // file the fixer knows how to rewrite. Build files other than go.mod
 // stay check-only for now.
-func findFixableFiles(dir string) ([]string, error) {
+//
+// Symbolic links are skipped — atomic rewrite via sibling-temp +
+// rename would replace the symlink itself with a regular file
+// containing the rewritten target's content, which is not what
+// callers expect. Skipped paths are logged to errw so the caller
+// can see what the walk passed over.
+func findFixableFiles(dir string, errw io.Writer) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -256,6 +276,10 @@ func findFixableFiles(dir string) ([]string, error) {
 			return nil
 		}
 		if strings.HasSuffix(name, ".go") || name == goModFilename {
+			if d.Type()&fs.ModeSymlink != 0 {
+				_, _ = fmt.Fprintf(errw, "%s: skipped symlink (atomic rewrite would replace the link with a regular file)\n", path)
+				return nil
+			}
 			files = append(files, path)
 		}
 		return nil

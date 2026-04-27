@@ -157,11 +157,26 @@ func FixFileWithOptions(filePath string, rules []CompiledRule, opts FixOptions) 
 // target. A SIGINT/OOM/power event mid-write leaves either the old file
 // intact or the fully-written new file, never a half-flushed source.
 // When backup is true, the original file is copied to `<path>.bak`
-// before the rename.
+// before the rename. The original file mode is preserved on both the
+// rewritten file and the backup — without this, all rewrites would
+// land at 0o600 (os.CreateTemp default) and backups at hardcoded
+// 0o644, regardless of the original file's permissions.
 func writeFormatted(filePath string, result []byte, ruleIDs []string, backup bool) error {
 	formatted, err := format.Source(result)
 	if err != nil {
 		return fmt.Errorf("refusing to write %s: post-edit source failed to format (rules: %s): %w", filePath, strings.Join(ruleIDs, ","), err)
+	}
+
+	// Original mode is preserved when the file already exists.
+	// New-file case (path doesn't exist yet) uses 0o644, which is
+	// the conventional mode for fresh Go files; production paths
+	// always have an existing file because writeFormatted is only
+	// reached after parseGoFile read it.
+	origMode := os.FileMode(0o644)
+	if mode, err := statMode(filePath); err == nil {
+		origMode = mode
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat %s: %w", filePath, err)
 	}
 
 	if backup {
@@ -169,11 +184,32 @@ func writeFormatted(filePath string, result []byte, ruleIDs []string, backup boo
 		if err != nil {
 			return fmt.Errorf("reading %s for backup: %w", filePath, err)
 		}
-		if err := os.WriteFile(filePath+".bak", orig, 0o644); err != nil {
+		if err := os.WriteFile(filePath+".bak", orig, origMode); err != nil {
 			return fmt.Errorf("writing backup %s.bak: %w", filePath, err)
 		}
 	}
 
+	return writeAtomicWithMode(filePath, formatted, origMode)
+}
+
+// statMode returns the permission bits of filePath (os.Stat — follows
+// symlinks; symlink-replacement is handled separately by the walk-side
+// lstat skip).
+func statMode(filePath string) (os.FileMode, error) {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return 0, err
+	}
+	return info.Mode().Perm(), nil
+}
+
+// writeAtomicWithMode is the shared atomic-write helper used by
+// writeFormatted (Go files) and the go.mod rewrite path. It stages
+// into a sibling temp file, chmods it to mode (so the post-rename
+// file inherits the caller's intended permissions, not the
+// os.CreateTemp default of 0o600), fsyncs, and renames over the
+// target.
+func writeAtomicWithMode(filePath string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(filePath)
 	tmp, err := os.CreateTemp(dir, filepath.Base(filePath)+".jwxmigrate.tmp.*")
 	if err != nil {
@@ -182,7 +218,7 @@ func writeFormatted(filePath string, result []byte, ruleIDs []string, backup boo
 	tmpPath := tmp.Name()
 	cleanup := func() { _ = os.Remove(tmpPath) }
 
-	if _, err := tmp.Write(formatted); err != nil {
+	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		cleanup()
 		return fmt.Errorf("writing temp for %s: %w", filePath, err)
@@ -195,6 +231,10 @@ func writeFormatted(filePath string, result []byte, ruleIDs []string, backup boo
 	if err := tmp.Close(); err != nil {
 		cleanup()
 		return fmt.Errorf("closing temp for %s: %w", filePath, err)
+	}
+	if err := os.Chmod(tmpPath, mode); err != nil {
+		cleanup()
+		return fmt.Errorf("chmod temp for %s: %w", filePath, err)
 	}
 	if err := os.Rename(tmpPath, filePath); err != nil {
 		cleanup()
@@ -1286,6 +1326,32 @@ func fixSignatureChange(node *ast.CallExpr, r *CompiledRule, byteOffset func(tok
 func fixDeleteStatement(node ast.Node, byteOffset func(token.Pos) int, stmtOf map[ast.Node]ast.Stmt) []Edit {
 	stmt, ok := stmtOf[node]
 	if !ok {
+		return nil
+	}
+	switch s := stmt.(type) {
+	case *ast.ExprStmt:
+		if s.X != node {
+			// Matched call is nested within a larger expression in
+			// the same statement (e.g. `foo(jws.X(...), other)`);
+			// deleting the whole stmt would drop sibling expressions.
+			return nil
+		}
+	case *ast.AssignStmt:
+		// Safe only when LHS is purely blank identifiers and the
+		// matched call is the entire RHS — i.e. `_ = X(...)` or
+		// `_, _ = X(...)`. Anything with a named LHS (`opt := X(...)`)
+		// or multi-RHS would lose context.
+		if len(s.Rhs) != 1 || s.Rhs[0] != node {
+			return nil
+		}
+		for _, lhs := range s.Lhs {
+			ident, ok := lhs.(*ast.Ident)
+			if !ok || ident.Name != "_" {
+				return nil
+			}
+		}
+	default:
+		// ReturnStmt, IfStmt, etc. — refuse.
 		return nil
 	}
 	start := byteOffset(stmt.Pos())

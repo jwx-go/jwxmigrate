@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"golang.org/x/mod/modfile"
 )
@@ -22,7 +23,46 @@ func defaultRunGoModTidy(dir string, out, errw io.Writer) error {
 	cmd.Dir = dir
 	cmd.Stdout = out
 	cmd.Stderr = errw
+	// jwx v4 depends on encoding/json/v2, which requires
+	// GOEXPERIMENT=jsonv2 at build time. After our rewrite the
+	// project's go.mod points at v4, so tidy will fail with
+	// "build constraints exclude all Go files" if jsonv2 is not
+	// in the env. Set it ourselves for this invocation; the
+	// migration target requires it.
+	cmd.Env = appendGOEXPERIMENT(os.Environ(), "jsonv2")
 	return cmd.Run()
+}
+
+// appendGOEXPERIMENT returns env with GOEXPERIMENT extended to
+// include exp (preserving any values the caller already set, in the
+// order they appeared) so we never silently clobber the user's
+// experiments. Idempotent if exp is already listed.
+func appendGOEXPERIMENT(env []string, exp string) []string {
+	out := make([]string, 0, len(env)+1)
+	found := false
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "GOEXPERIMENT=") {
+			out = append(out, kv)
+			continue
+		}
+		found = true
+		val := strings.TrimPrefix(kv, "GOEXPERIMENT=")
+		if val == "" {
+			out = append(out, "GOEXPERIMENT="+exp)
+			continue
+		}
+		for _, p := range strings.Split(val, ",") {
+			if p == exp {
+				out = append(out, kv)
+				return out
+			}
+		}
+		out = append(out, "GOEXPERIMENT="+val+","+exp)
+	}
+	if !found {
+		out = append(out, "GOEXPERIMENT="+exp)
+	}
+	return out
 }
 
 // goModFilename is the canonical filename of a Go module file, used by the
@@ -92,7 +132,11 @@ func fixGoMod(filePath string, rules []CompiledRule) (*FixResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("formatting %s: %w", filePath, err)
 	}
-	if err := writeAtomic(filePath, out); err != nil {
+	origMode, err := statMode(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("stat %s: %w", filePath, err)
+	}
+	if err := writeAtomicWithMode(filePath, out, origMode); err != nil {
 		return nil, err
 	}
 
@@ -138,34 +182,5 @@ func importRewriteRules(rules []CompiledRule) []importRewrite {
 	return out
 }
 
-// writeAtomic writes data to filePath via a sibling temp file + rename,
-// matching the durability guarantees writeFormatted gives Go-file rewrites.
-func writeAtomic(filePath string, data []byte) error {
-	dir := filepath.Dir(filePath)
-	tmp, err := os.CreateTemp(dir, filepath.Base(filePath)+".jwxmigrate.tmp.*")
-	if err != nil {
-		return fmt.Errorf("creating temp for %s: %w", filePath, err)
-	}
-	tmpPath := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpPath) }
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return fmt.Errorf("writing temp for %s: %w", filePath, err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return fmt.Errorf("fsync temp for %s: %w", filePath, err)
-	}
-	if err := tmp.Close(); err != nil {
-		cleanup()
-		return fmt.Errorf("closing temp for %s: %w", filePath, err)
-	}
-	if err := os.Rename(tmpPath, filePath); err != nil {
-		cleanup()
-		return fmt.Errorf("renaming temp to %s: %w", filePath, err)
-	}
-	return nil
-}
+// (writeAtomic was inlined into writeAtomicWithMode in fix.go to share
+// the mode-preservation path with writeFormatted.)

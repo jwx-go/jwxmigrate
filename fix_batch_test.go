@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,7 +25,7 @@ func TestFindFixableFiles_DotRootIsNotSkipped(t *testing.T) {
 
 	t.Chdir(dir)
 
-	files, err := findFixableFiles(".")
+	files, err := findFixableFiles(".", io.Discard)
 	require.NoError(t, err)
 	require.Len(t, files, 2, "both a.go and sub/b.go must be discovered")
 }
