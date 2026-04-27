@@ -31,8 +31,56 @@ var _ = jwtalias.SubjectKey
 	pf, err := parseGoFile(path, "a.go")
 	require.NoError(t, err)
 	require.NotNil(t, pf)
-	require.Contains(t, pf.V3Imports, "jwk")
-	require.Contains(t, pf.V3Imports, "jwtalias")
+	require.Contains(t, pf.JwxImports, "jwk")
+	require.Contains(t, pf.JwxImports, "jwtalias")
+}
+
+// TestParseGoFile_V4Detected pins the order-independence contract: a
+// file that imports the migration's target version (already-migrated
+// imports left over from a manual rewrite) is still surfaced for
+// scanning, with the v4 import paths captured in JwxImports. Before the
+// fix, parseGoFile bailed at the v3-only filter and the file was
+// silently treated as "not jwx".
+func TestParseGoFile_V4Detected(t *testing.T) {
+	src := `package sample
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	jwtalias "github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+var _ = jwk.Import[jwk.Key]
+var _ = jwtalias.SubjectKey
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.go")
+	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
+
+	pf, err := parseGoFile(path, "a.go")
+	require.NoError(t, err)
+	require.NotNil(t, pf)
+	require.Equal(t, "github.com/lestrrat-go/jwx/v4/jwk", pf.JwxImports["jwk"])
+	require.Equal(t, "github.com/lestrrat-go/jwx/v4/jwt", pf.JwxImports["jwtalias"])
+}
+
+func TestIsJwxImport(t *testing.T) {
+	require.True(t, isJwxImport("github.com/lestrrat-go/jwx/v3/jwt"))
+	require.True(t, isJwxImport("github.com/lestrrat-go/jwx/v3/jwk"))
+	require.True(t, isJwxImport("github.com/lestrrat-go/jwx/v4/jwt"))
+	require.True(t, isJwxImport("github.com/lestrrat-go/jwx/v4"))
+	require.False(t, isJwxImport("github.com/lestrrat-go/jwx/v2/jwt"),
+		"v2 is reachable via v2-to-v4 migration but with sourceImportPrefix rewritten by loadRules; default v3-to-v4 must reject v2 paths")
+	require.False(t, isJwxImport("fmt"))
+	require.False(t, isJwxImport("github.com/other/jwx/v3/jwt"))
+}
+
+func TestRewriteToTargetImport(t *testing.T) {
+	require.Equal(t, "github.com/lestrrat-go/jwx/v4/jwt",
+		rewriteToTargetImport("github.com/lestrrat-go/jwx/v3/jwt"),
+		"v3 source path rewrites to v4")
+	require.Equal(t, "github.com/lestrrat-go/jwx/v4/jwt",
+		rewriteToTargetImport("github.com/lestrrat-go/jwx/v4/jwt"),
+		"already-target path is returned unchanged so the helper is safe to call from either orientation")
 }
 
 func TestParseGoFile_NoV3ReturnsNil(t *testing.T) {

@@ -1,0 +1,44 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+// Order-independence regression: a project where imports have already
+// been pointed at v4 (via gopls / IDE refactor / manual edit) but still
+// contains v3 API call shapes. Before the fix, prescan only retained
+// files importing v3, so this file was skipped entirely and Check
+// reported zero findings — silently telling the user "migration
+// complete" while the working tree was full of v3 patterns. The
+// broadened gate now picks v4-imported files up too.
+
+func readSubject(tok jwt.Token) string {
+	var sub string
+	_ = tok.Get(jwt.SubjectKey, &sub)
+	return sub
+}
+-- want_check.txt --
+main.go:17: [get-to-field] (manual) tok.Get(jwt.SubjectKey, &sub)
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+// Order-independence regression: a project where imports have already
+// been pointed at v4 (via gopls / IDE refactor / manual edit) but still
+// contains v3 API call shapes. Before the fix, prescan only retained
+// files importing v3, so this file was skipped entirely and Check
+// reported zero findings — silently telling the user "migration
+// complete" while the working tree was full of v3 patterns. The
+// broadened gate now picks v4-imported files up too.
+
+func readSubject(tok jwt.Token) string {
+	var sub string
+	_ = tok.Get(jwt.SubjectKey, &sub)
+	return sub
+}
