@@ -20,14 +20,14 @@ func TestNormalizeTarget(t *testing.T) {
 		{name: "plain directory", in: "pkg", want: "pkg"},
 		{name: "rooted directory", in: "./pkg", want: "./pkg"},
 		{name: "absolute path", in: "/abs/path", want: "/abs/path"},
-		{name: "dot dot dot maps to current dir", in: "...", want: "."},
-		{name: "dot slash dot dot dot maps to current dir", in: "./...", want: "."},
+		{name: "bare ellipsis maps to current dir", in: "...", want: "."},
+		{name: "rooted ellipsis maps to current dir", in: "./...", want: "."},
 		{name: "rooted recursive", in: "./pkg/...", want: "./pkg"},
 		{name: "unrooted recursive", in: "pkg/...", want: "pkg"},
 		{name: "deep recursive", in: "./a/b/...", want: "./a/b"},
 		{name: "trailing slash recursive", in: "./pkg/.../", wantErr: true},
 		{name: "ellipsis in middle", in: "./a/.../b", wantErr: true},
-		{name: "bare double dot dot dot", in: "....", wantErr: true},
+		{name: "four dot run", in: "....", wantErr: true},
 		{name: "ellipsis fragment in name", in: "./pk.../foo", wantErr: true},
 	}
 	for _, tc := range cases {
