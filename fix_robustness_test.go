@@ -15,6 +15,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// skipOnWindows bails out of mode/symlink-sensitive tests that don't
+// match Windows file semantics. Centralized so the goos literal lives
+// in one place.
+func skipOnWindows(t *testing.T, reason string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip(reason)
+	}
+}
+
 // TestFixFiles_TidyFailureSurfaces pins the JWXMIGRATE-002 fix:
 // when `go mod tidy` exits non-zero after a successful rewrite, the
 // failure must land in summary.failures so runFix returns a non-zero
@@ -91,9 +101,7 @@ func TestAppendGOEXPERIMENT(t *testing.T) {
 // the rewritten file inherits the original file mode instead of
 // being silently re-created at 0o600 (the os.CreateTemp default).
 func TestWriteFormatted_PreservesMode(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows file modes only honor the write bit")
-	}
+	skipOnWindows(t, "windows file modes only honor the write bit")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "x.go")
 	require.NoError(t, os.WriteFile(path, []byte("package x\n"), 0o644))
@@ -111,9 +119,7 @@ func TestWriteFormatted_PreservesMode(t *testing.T) {
 // 0o600 secret-bearing file produces a 0o600 backup), not the
 // hardcoded 0o644 the pre-fix code used.
 func TestWriteFormatted_BackupPreservesMode(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows file modes only honor the write bit")
-	}
+	skipOnWindows(t, "windows file modes only honor the write bit")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "secret.go")
 	require.NoError(t, os.WriteFile(path, []byte("package x\n"), 0o600))
@@ -131,9 +137,7 @@ func TestWriteFormatted_BackupPreservesMode(t *testing.T) {
 // (they would otherwise be followed and replaced with regular files
 // by the atomic rewrite). Skipped paths are reported on errw.
 func TestFindFixableFiles_SkipsSymlinks(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("symlink semantics differ on windows")
-	}
+	skipOnWindows(t, "symlink semantics differ on windows")
 	dir := t.TempDir()
 
 	regular := filepath.Join(dir, "real.go")
@@ -149,7 +153,7 @@ func TestFindFixableFiles_SkipsSymlinks(t *testing.T) {
 	require.NoError(t, err)
 
 	// real.go AND target.go should be picked up; linked.go should NOT.
-	var paths []string
+	paths := make([]string, 0, len(files))
 	for _, f := range files {
 		paths = append(paths, filepath.Base(f))
 	}
@@ -251,4 +255,3 @@ func TestFixDeleteStatement_PreservesContext(t *testing.T) {
 		})
 	}
 }
-

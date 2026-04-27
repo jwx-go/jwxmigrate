@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -37,6 +38,8 @@ func defaultRunGoModTidy(dir string, out, errw io.Writer) error {
 // include exp (preserving any values the caller already set, in the
 // order they appeared) so we never silently clobber the user's
 // experiments. Idempotent if exp is already listed.
+//
+//nolint:unparam // exp is "jsonv2" today; kept parameterized so future migrations can layer additional experiments without rewriting the helper.
 func appendGOEXPERIMENT(env []string, exp string) []string {
 	out := make([]string, 0, len(env)+1)
 	found := false
@@ -51,11 +54,9 @@ func appendGOEXPERIMENT(env []string, exp string) []string {
 			out = append(out, "GOEXPERIMENT="+exp)
 			continue
 		}
-		for _, p := range strings.Split(val, ",") {
-			if p == exp {
-				out = append(out, kv)
-				return out
-			}
+		if slices.Contains(strings.Split(val, ","), exp) {
+			out = append(out, kv)
+			return out
 		}
 		out = append(out, "GOEXPERIMENT="+val+","+exp)
 	}
