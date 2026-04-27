@@ -52,8 +52,9 @@ type FixOptions struct {
 	// path to a fully type-checked ParsedGoFile. FixFileWithOptions looks
 	// up each file in this map before falling back to the untyped parse
 	// path, skipping parseGoFileTyped entirely — the batch avoids invoking
-	// packages.Load once per file. Cache miss is treated as "no v3
-	// imports" since the cache builder only records v3-importing files.
+	// packages.Load once per file. Cache miss is treated as "no jwx
+	// imports" since the cache builder only records jwx-importing files
+	// (source or target version).
 	typedCache map[string]*ParsedGoFile
 }
 
@@ -68,9 +69,9 @@ func FixFile(filePath string, rules []CompiledRule) (*FixResult, error) {
 func FixFileWithOptions(filePath string, rules []CompiledRule, opts FixOptions) (*FixResult, error) {
 	// Try type-checked loading first for type-aware fixes. When the batch
 	// provided a typedCache we consult it directly and skip parseGoFileTyped
-	// on miss — a miss means the prescan saw no v3 imports, so invoking
-	// packages.Load here would waste a full module type-check just to
-	// discover the same thing.
+	// on miss — a miss means the prescan saw no jwx imports at all, so
+	// invoking packages.Load here would waste a full module type-check
+	// just to discover the same thing.
 	var pf *ParsedGoFile
 	if opts.typedCache != nil {
 		if abs, err := filepath.Abs(filePath); err == nil {
@@ -87,7 +88,7 @@ func FixFileWithOptions(filePath string, rules []CompiledRule, opts FixOptions) 
 		}
 	}
 	if pf == nil {
-		// No v3 imports — nothing to fix, caller treats nil result as skip.
+		// No jwx imports — nothing to fix, caller treats nil result as skip.
 		return nil, nil //nolint:nilnil
 	}
 
@@ -263,7 +264,7 @@ type taggedEdit struct {
 func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 	// Build helper maps.
 	localToBasePkg := make(map[string]string)
-	for localName, importPath := range pf.V3Imports {
+	for localName, importPath := range pf.JwxImports {
 		localToBasePkg[localName] = goPkgName(importPath)
 	}
 	matchesPkg := func(localName, expectedPkg string) bool {
@@ -379,7 +380,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 						if !m.MatchesName(sel.Sel.Name) {
 							return true
 						}
-						if pf.TypesInfo != nil && !isV3Type(pf.TypesInfo, sel.X) {
+						if pf.TypesInfo != nil && !isJwxType(pf.TypesInfo, sel.X) {
 							return true
 						}
 					default:
@@ -427,7 +428,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 						return true
 					}
 					if m.PkgName != "" {
-						if _, hasDot := pf.V3Imports["."]; !hasDot {
+						if _, hasDot := pf.JwxImports["."]; !hasDot {
 							return true
 						}
 					}
@@ -791,7 +792,7 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 	}
 	typeName := types.TypeString(tv.Type, func(pkg *types.Package) string {
 		// Use the local import name for the type's package.
-		for localName, importPath := range pf.V3Imports {
+		for localName, importPath := range pf.JwxImports {
 			if pkg.Path() == importPath {
 				return localName
 			}
@@ -800,7 +801,7 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 	})
 
 	// Determine the receiver's package local name for pkg.Get[T].
-	// First try V3Imports (the common case: file directly imports the
+	// First try JwxImports (the common case: file directly imports the
 	// package). If the package is reachable only transitively (e.g. via
 	// a helper's return type — OPA's sign_test.go uses jwt.Token this
 	// way without importing jwt), fall back to the v3 path from
@@ -816,7 +817,7 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 		if named, ok := recvType.(*types.Named); ok {
 			if obj := named.Obj(); obj != nil && obj.Pkg() != nil {
 				recvPkgPath = obj.Pkg().Path()
-				for localName, importPath := range pf.V3Imports {
+				for localName, importPath := range pf.JwxImports {
 					if recvPkgPath == importPath {
 						recvPkgLocal = localName
 						break
@@ -826,16 +827,16 @@ func fixGetToField(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, byteOf
 		}
 	}
 	if recvPkgLocal == "" {
-		if recvPkgPath == "" || !strings.HasPrefix(recvPkgPath, sourceImportPrefix) {
+		if recvPkgPath == "" || !isJwxImport(recvPkgPath) {
 			return []Edit{}
 		}
 		// Not directly imported — derive local name and queue an
-		// import for the v4-rewritten path. The import-v3-to-v4 rule
-		// only rewrites existing v3 ImportSpec nodes, so injecting a
-		// v4 path keeps the file consistent after the full pass.
+		// import for the target-rewritten path. rewriteToTargetImport
+		// is a no-op when recvPkgPath is already on targetImportPrefix
+		// (post-update files), so the same code handles v3- and
+		// v4-imported sources without branching.
 		recvPkgLocal = goPkgName(recvPkgPath)
-		v4Path := strings.Replace(recvPkgPath, sourceImportPrefix, targetImportPrefix, 1)
-		pendingJWXImports[v4Path] = recvPkgLocal
+		pendingJWXImports[rewriteToTargetImport(recvPkgPath)] = recvPkgLocal
 	}
 
 	// Build the source text for the first argument (name).
@@ -1149,7 +1150,7 @@ func fixJWKExportGeneric(pf *ParsedGoFile, node *ast.CallExpr, r *CompiledRule, 
 	}
 
 	tStr := types.TypeString(dstType, func(pkg *types.Package) string {
-		for localName, importPath := range pf.V3Imports {
+		for localName, importPath := range pf.JwxImports {
 			if pkg.Path() == importPath {
 				return localName
 			}

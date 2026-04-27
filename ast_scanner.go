@@ -40,15 +40,37 @@ var sourceImportPrefix = "github.com/lestrrat-go/jwx/v3"
 // inject an import for the matching v4 subpackage.
 var targetImportPrefix = "github.com/lestrrat-go/jwx/v4"
 
-// ParsedGoFile holds a parsed Go file with its v3 import mappings.
+// isJwxImport reports whether path is a jwx package — either the
+// migration's source version (e.g. v3) or its target (v4). Used by the
+// gates that decide "scan / fix this file?" so a project that has
+// already been partially migrated (imports rewritten by hand or by
+// `gopls`) still gets its leftover source-version API patterns
+// rewritten. Path-shape rewrites remain anchored on sourceImportPrefix
+// alone — those are no-ops on already-target paths.
+func isJwxImport(path string) bool {
+	return strings.HasPrefix(path, sourceImportPrefix) || strings.HasPrefix(path, targetImportPrefix)
+}
+
+// rewriteToTargetImport returns path with sourceImportPrefix rewritten
+// to targetImportPrefix. When path is already on the target prefix it
+// is returned unchanged, making the helper safe to call against either
+// orientation.
+func rewriteToTargetImport(path string) string {
+	if strings.HasPrefix(path, targetImportPrefix) {
+		return path
+	}
+	return strings.Replace(path, sourceImportPrefix, targetImportPrefix, 1)
+}
+
+// ParsedGoFile holds a parsed Go file with its jwx import mappings.
 // The Src and ASTFile fields are retained for future rewriting operations.
 type ParsedGoFile struct {
-	RelPath   string
-	Src       []byte
-	FileSet   *token.FileSet
-	ASTFile   *ast.File
-	V3Imports map[string]string // local name -> v3 import path
-	TypesInfo *types.Info       // non-nil when type-checked loading succeeded
+	RelPath    string
+	Src        []byte
+	FileSet    *token.FileSet
+	ASTFile    *ast.File
+	JwxImports map[string]string // local name -> jwx import path (source OR target version)
+	TypesInfo  *types.Info       // non-nil when type-checked loading succeeded
 }
 
 // shouldSkipWalkDir reports whether a directory should be skipped during
@@ -60,8 +82,9 @@ func shouldSkipWalkDir(name string) bool {
 	return len(name) > 0 && name[0] == '.'
 }
 
-// parseGoFile parses a Go file and builds the v3 import map.
-// Returns nil (not error) if the file does not import any v3 package.
+// parseGoFile parses a Go file and builds its jwx import map.
+// Returns nil (not error) if the file does not import any jwx package
+// (either source or target version).
 func parseGoFile(filePath, rel string) (*ParsedGoFile, error) {
 	src, err := os.ReadFile(filePath)
 	if err != nil {
@@ -74,18 +97,18 @@ func parseGoFile(filePath, rel string) (*ParsedGoFile, error) {
 		return nil, fmt.Errorf("%w: %w", errParseFailed, err)
 	}
 
-	v3Imports := buildV3ImportMap(astFile)
-	if len(v3Imports) == 0 {
-		// Not an error — file simply doesn't import v3, skip it.
+	jwxImports := buildJwxImportMap(astFile)
+	if len(jwxImports) == 0 {
+		// Not an error — file simply doesn't import jwx, skip it.
 		return nil, nil //nolint:nilnil
 	}
 
 	return &ParsedGoFile{
-		RelPath:   rel,
-		Src:       src,
-		FileSet:   fset,
-		ASTFile:   astFile,
-		V3Imports: v3Imports,
+		RelPath:    rel,
+		Src:        src,
+		FileSet:    fset,
+		ASTFile:    astFile,
+		JwxImports: jwxImports,
 	}, nil
 }
 
@@ -136,8 +159,8 @@ func parseGoFileTyped(filePath string, overlay map[string][]byte) *ParsedGoFile 
 			if pkg.GoFiles[i] != absPath {
 				continue
 			}
-			v3Imports := buildV3ImportMap(astFile)
-			if len(v3Imports) == 0 {
+			jwxImports := buildJwxImportMap(astFile)
+			if len(jwxImports) == 0 {
 				return nil
 			}
 			src, err := os.ReadFile(absPath)
@@ -145,12 +168,12 @@ func parseGoFileTyped(filePath string, overlay map[string][]byte) *ParsedGoFile 
 				return nil
 			}
 			return &ParsedGoFile{
-				RelPath:   filePath,
-				Src:       src,
-				FileSet:   pkg.Fset,
-				ASTFile:   astFile,
-				V3Imports: v3Imports,
-				TypesInfo: pkg.TypesInfo,
+				RelPath:    filePath,
+				Src:        src,
+				FileSet:    pkg.Fset,
+				ASTFile:    astFile,
+				JwxImports: jwxImports,
+				TypesInfo:  pkg.TypesInfo,
 			}
 		}
 	}
@@ -160,15 +183,15 @@ func parseGoFileTyped(filePath string, overlay map[string][]byte) *ParsedGoFile 
 // buildTypedFileCache loads the packages containing the given files with
 // full type information via a single packages.Load per module root, and
 // returns a map from absolute file path to a ready-to-use ParsedGoFile
-// for every v3-importing file covered by those loads.
+// for every jwx-importing file covered by those loads.
 //
 // The fix batch uses this cache to avoid calling packages.Load once per
 // file — a pattern that re-parses and re-type-checks every transitive
 // dependency N times on large consumers. Files whose imports-only prescan
-// turns up no jwx imports are deliberately omitted; FixFileWithOptions
-// treats a cache miss as "not a v3 file" and skips parseGoFileTyped
-// entirely when a cache was supplied, preserving the speedup even for
-// non-v3 files in the same batch.
+// turns up no jwx imports (source OR target version) are deliberately
+// omitted; FixFileWithOptions treats a cache miss as "not a jwx file"
+// and skips parseGoFileTyped entirely when a cache was supplied,
+// preserving the speedup even for non-jwx files in the same batch.
 //
 // overlay is forwarded to packages.Config.Overlay so the type checker
 // sees pre-batch content even after sibling files have been rewritten on
@@ -215,8 +238,8 @@ func buildTypedFileCache(files []string, overlay map[string][]byte) map[string]*
 							continue
 						}
 						filePath := pkg.GoFiles[j]
-						v3Imports := buildV3ImportMap(astFile)
-						if len(v3Imports) == 0 {
+						jwxImports := buildJwxImportMap(astFile)
+						if len(jwxImports) == 0 {
 							continue
 						}
 						src, readErr := os.ReadFile(filePath)
@@ -226,12 +249,12 @@ func buildTypedFileCache(files []string, overlay map[string][]byte) map[string]*
 						mu.Lock()
 						if _, exists := cache[filePath]; !exists {
 							cache[filePath] = &ParsedGoFile{
-								RelPath:   filePath,
-								Src:       src,
-								FileSet:   pkg.Fset,
-								ASTFile:   astFile,
-								V3Imports: v3Imports,
-								TypesInfo: pkg.TypesInfo,
+								RelPath:    filePath,
+								Src:        src,
+								FileSet:    pkg.Fset,
+								ASTFile:    astFile,
+								JwxImports: jwxImports,
+								TypesInfo:  pkg.TypesInfo,
 							}
 						}
 						mu.Unlock()
@@ -425,7 +448,7 @@ func prescanModule(modRoot string) modulePrescan {
 		}
 		for _, imp := range f.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
-			if strings.HasPrefix(importPath, sourceImportPrefix) {
+			if isJwxImport(importPath) {
 				dirs[filepath.Dir(p)] = struct{}{}
 				v3Files = append(v3Files, p)
 				break
@@ -500,8 +523,8 @@ func loadAndScanModule(ps modulePrescan, topDir string, rules []CompiledRule, op
 				rel = filePath
 			}
 
-			v3Imports := buildV3ImportMap(astFile)
-			if len(v3Imports) == 0 {
+			jwxImports := buildJwxImportMap(astFile)
+			if len(jwxImports) == 0 {
 				continue
 			}
 
@@ -511,12 +534,12 @@ func loadAndScanModule(ps modulePrescan, topDir string, rules []CompiledRule, op
 			}
 
 			pf := &ParsedGoFile{
-				RelPath:   rel,
-				Src:       src,
-				FileSet:   pkg.Fset,
-				ASTFile:   astFile,
-				V3Imports: v3Imports,
-				TypesInfo: pkg.TypesInfo,
+				RelPath:    rel,
+				Src:        src,
+				FileSet:    pkg.Fset,
+				ASTFile:    astFile,
+				JwxImports: jwxImports,
+				TypesInfo:  pkg.TypesInfo,
 			}
 
 			ff := scanGoFileAST(pf, rules, opts)
@@ -530,12 +553,18 @@ func loadAndScanModule(ps modulePrescan, topDir string, rules []CompiledRule, op
 	return findings
 }
 
-// buildV3ImportMap extracts v3 imports and their local names from an AST file.
-func buildV3ImportMap(f *ast.File) map[string]string {
+// buildJwxImportMap extracts jwx imports (source AND target version)
+// and their local names from an AST file. Including the target
+// version is what lets the fixer rewrite leftover source-version API
+// shapes in files whose imports have already been pointed at the new
+// version — `pkg.Path() == importPath` lookups in the rewriter still
+// resolve to a local name, and gates that just ask "is this a jwx
+// receiver?" still answer yes.
+func buildJwxImportMap(f *ast.File) map[string]string {
 	imports := make(map[string]string)
 	for _, imp := range f.Imports {
 		importPath := strings.Trim(imp.Path.Value, `"`)
-		if !strings.HasPrefix(importPath, sourceImportPrefix) {
+		if !isJwxImport(importPath) {
 			continue
 		}
 
@@ -605,7 +634,7 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 	matched := make(map[lineKey]struct{})
 
 	localToBasePkg := make(map[string]string)
-	for localName, importPath := range pf.V3Imports {
+	for localName, importPath := range pf.JwxImports {
 		localToBasePkg[localName] = goPkgName(importPath)
 	}
 
@@ -705,7 +734,7 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 					// loading — the parser-populated Obj chain is enough for
 					// func params and explicitly-typed var declarations.
 					if localPkg := localIdentDeclPackage(ident); localPkg != "" && localPkg == rm.matcher.PkgName {
-						if _, imported := pf.V3Imports[localPkg]; imported {
+						if _, imported := pf.JwxImports[localPkg]; imported {
 							addFinding(rm.rule, node, "CallExpr")
 						}
 					}
@@ -719,10 +748,10 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 				}
 				if pf.TypesInfo != nil {
 					// Type info available — only match if receiver is a v3 type.
-					if !isV3Type(pf.TypesInfo, sel.X) {
+					if !isJwxType(pf.TypesInfo, sel.X) {
 						continue
 					}
-				} else if !receiverDeclaredAsV3(sel.X, pf.V3Imports) {
+				} else if !receiverDeclaredAsJwx(sel.X, pf.JwxImports) {
 					// No type info — accept only receivers whose declared type
 					// is package-qualified to a v3 import. Without this guard
 					// every .Get(), .Set(), etc. in a v3-importing file would
@@ -751,7 +780,7 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 				if rm.matcher.MatchesName(node.Name) {
 					if rm.matcher.PkgName == "" {
 						addFinding(rm.rule, node, "Ident")
-					} else if _, hasDot := pf.V3Imports["."]; hasDot {
+					} else if _, hasDot := pf.JwxImports["."]; hasDot {
 						addFinding(rm.rule, node, "Ident")
 					}
 				}
@@ -819,43 +848,49 @@ func localIdentDeclPackage(ident *ast.Ident) string {
 	return ""
 }
 
-// receiverDeclaredAsV3 is the untyped-mode receiver check for MatchMethodCall.
-// It accepts simple-identifier receivers in two shapes:
+// receiverDeclaredAsJwx is the untyped-mode receiver check for
+// MatchMethodCall. It accepts simple-identifier receivers in two shapes:
 //
-//  1. The identifier names a v3 package import (e.g. jwt.ReadFile(...))
+//  1. The identifier names a jwx package import (e.g. jwt.ReadFile(...))
 //  2. The identifier is a local var/param whose declared type is
-//     package-qualified to a v3 import (e.g. tok.Get(...) where tok jwt.Token)
+//     package-qualified to a jwx import (e.g. tok.Get(...) where tok jwt.Token)
 //
-// Chained calls, type assertions, and locally-typed receivers fall through,
-// sacrificing recall for precision in scans without go/packages type info.
-func receiverDeclaredAsV3(expr ast.Expr, v3Imports map[string]string) bool {
+// Both source and target version imports qualify, since jwxImports now
+// includes either. Chained calls, type assertions, and locally-typed
+// receivers fall through, sacrificing recall for precision in scans
+// without go/packages type info.
+func receiverDeclaredAsJwx(expr ast.Expr, jwxImports map[string]string) bool {
 	ident, ok := expr.(*ast.Ident)
 	if !ok {
 		return false
 	}
-	if _, ok := v3Imports[ident.Name]; ok {
+	if _, ok := jwxImports[ident.Name]; ok {
 		return true
 	}
 	pkg := localIdentDeclPackage(ident)
 	if pkg == "" {
 		return false
 	}
-	_, ok = v3Imports[pkg]
+	_, ok = jwxImports[pkg]
 	return ok
 }
 
-// isV3Type checks whether the type of an expression belongs to a v3 jwx package.
-func isV3Type(info *types.Info, expr ast.Expr) bool {
+// isJwxType checks whether the type of an expression belongs to a jwx
+// package — either the migration's source version or its target. The
+// broader test means rules that gate on "is this a jwx receiver?" still
+// fire on files whose imports have already been pointed at the target
+// version with leftover source-shape API calls.
+func isJwxType(info *types.Info, expr ast.Expr) bool {
 	tv, ok := info.Types[expr]
 	if !ok {
 		return false
 	}
-	return typeIsFromV3(tv.Type)
+	return typeIsFromJwx(tv.Type)
 }
 
-// typeIsFromV3 checks whether a type (or the type it points to) is defined
-// in a v3 jwx package.
-func typeIsFromV3(t types.Type) bool {
+// typeIsFromJwx reports whether a type (or the type it points to) is
+// defined in a jwx package (source OR target version).
+func typeIsFromJwx(t types.Type) bool {
 	// Unwrap pointer.
 	if ptr, ok := t.(*types.Pointer); ok {
 		t = ptr.Elem()
@@ -865,18 +900,17 @@ func typeIsFromV3(t types.Type) bool {
 	if named, ok := t.(*types.Named); ok {
 		obj := named.Obj()
 		if obj != nil && obj.Pkg() != nil {
-			return strings.HasPrefix(obj.Pkg().Path(), sourceImportPrefix)
+			return isJwxImport(obj.Pkg().Path())
 		}
 	}
 
 	// Interface satisfied by a named type embedded within.
 	if iface, ok := t.Underlying().(*types.Interface); ok {
 		_ = iface // interface whose concrete type we can't resolve statically
-		// For interfaces, check if the type itself is named and from v3.
 		if named, ok := t.(*types.Named); ok {
 			obj := named.Obj()
 			if obj != nil && obj.Pkg() != nil {
-				return strings.HasPrefix(obj.Pkg().Path(), sourceImportPrefix)
+				return isJwxImport(obj.Pkg().Path())
 			}
 		}
 	}

@@ -53,7 +53,7 @@ func Other() string { return "hi" }
 	pf := cache[absV3]
 	require.NotNil(t, pf, "v3-importing file must be in cache")
 	require.NotNil(t, pf.TypesInfo, "cached entry must carry type info")
-	require.NotEmpty(t, pf.V3Imports)
+	require.NotEmpty(t, pf.JwxImports)
 
 	_, present := cache[absNoV3]
 	require.False(t, present, "non-v3 files must be omitted from cache")

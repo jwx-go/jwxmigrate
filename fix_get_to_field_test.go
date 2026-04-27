@@ -101,7 +101,7 @@ func Read(tok jwt.Token) string {
 // TestFixGetToField_TransitiveImport covers OPA's pattern: a file
 // references jwt.Token only through a helper's return type, never
 // importing jwt directly. Before this fix, fixGetToField bailed when
-// the receiver's package wasn't in V3Imports, falling through to the
+// the receiver's package wasn't in JwxImports, falling through to the
 // naive .Get → .Field rename. Now it derives the local name from
 // TypesInfo and queues an import injection so the rewritten call
 // binds against a real imported package.
