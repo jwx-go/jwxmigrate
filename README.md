@@ -15,8 +15,11 @@ go install github.com/jwx-go/jwxmigrate/v4@latest
 ## Usage
 
 ```bash
-# Check current directory
-jwxmigrate
+# Apply all mechanical fixes recursively (imports, go.mod, renames)
+jwxmigrate --fix ./...
+
+# Then check what remains (items needing manual judgment)
+jwxmigrate ./...
 
 # Check a specific directory
 jwxmigrate /path/to/project
@@ -30,6 +33,8 @@ jwxmigrate --mechanical
 # Check a specific rule
 jwxmigrate --rule import-v3-to-v4
 ```
+
+The `...` suffix is only honored as the trailing path segment (e.g. `./...`, `./pkg/...`); full `go list` pattern semantics are not implemented.
 
 ### Exit codes
 
