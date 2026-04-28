@@ -1,6 +1,16 @@
 Changes
 =======
 
+v4.0.2 28 Apr 2026
+  * Accept `go`-style `./...` target patterns on the command line.
+  * Show the matching source line inline in finding diagnostics.
+  * Scan files that already import v4 (instead of skipping them) so
+    leftover v3 calls in mixed-import files are reported.
+  * Fix false-positive on bare `jwt.Parse` (no leading package import).
+  * Fix-pass robustness: report `go mod tidy` failures, preserve
+    original file modes, follow symlinks correctly, and propagate
+    cancellation in delete contexts.
+
 v4.0.1 19 Apr 2026
   * Auto-fix jwk.Import / jwk.Export / jwk.FromRaw call sites.
   * Auto-fix obj.Get(name, &dst) -> dst, err := pkg.Get[T](obj, name).
