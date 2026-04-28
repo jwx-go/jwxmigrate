@@ -33,10 +33,31 @@ type SignatureAlgorithm string
 
 func withStubJWTModule(t *testing.T) string {
 	t.Helper()
+	return writeStubJWTModule(t, "github.com/lestrrat-go/jwx/v3")
+}
+
+// withStubJWTV4Module is the post-update orientation: same surface as
+// withStubJWTModule but with a module path on the migration's target
+// version. Used to prove the broadened gate fires the get-to-field
+// rewrite even when the source file already imports v4 — order
+// independence relies on isJwxType / typeIsFromJwx accepting v4
+// receivers.
+//
+// The stub still exposes `.Get(name, &dst)` even though real v4
+// doesn't; we want the type checker to resolve the call so the
+// rewrite path runs end-to-end. The rule's behavior is keyed on the
+// receiver's package, not on whether the method exists in real v4.
+func withStubJWTV4Module(t *testing.T) string {
+	t.Helper()
+	return writeStubJWTModule(t, "github.com/lestrrat-go/jwx/v4")
+}
+
+func writeStubJWTModule(t *testing.T, modulePath string) string {
+	t.Helper()
 	root := t.TempDir()
 
 	require.NoError(t, os.WriteFile(filepath.Join(root, "go.mod"),
-		[]byte("module github.com/lestrrat-go/jwx/v3\n\ngo 1.21\n"), 0o644))
+		[]byte("module "+modulePath+"\n\ngo 1.21\n"), 0o644))
 
 	jwtDir := filepath.Join(root, "jwt")
 	require.NoError(t, os.MkdirAll(jwtDir, 0o755))
@@ -160,6 +181,36 @@ func Read() string {
 		"missing jwt import should be injected so the rewritten call binds")
 	require.NotContains(t, got, "tok.Field(",
 		"naive rename must not fire")
+}
+
+// TestFixGetToField_AlreadyMigratedImports is the load-bearing
+// order-independence regression: a project whose imports were already
+// rewritten to v4 (by hand or by a tool) but still contains v3 API
+// shapes must get the v3 calls rewritten when the user finally runs
+// `jwxmigrate --fix`. Before the broadening, isJwxType only accepted
+// v3 receivers, get-to-field's type-info gate failed, the auto-fix
+// silently downgraded to "no rewrite", and the user was left with
+// uncompilable code that jwxmigrate had reported as "complete".
+func TestFixGetToField_AlreadyMigratedImports(t *testing.T) {
+	root := withStubJWTV4Module(t)
+	got := runGetToFieldFixOnFile(t, root, `package caller
+
+import "github.com/lestrrat-go/jwx/v4/jwt"
+
+func Read(tok jwt.Token) string {
+	var gotKid string
+	if err := tok.Get("keyid", &gotKid); err != nil {
+		panic(err)
+	}
+	return gotKid
+}
+`)
+	require.Contains(t, got, "jwt.Get[string](tok, \"keyid\")",
+		"v4-imported source should get the same generic-form rewrite as v3")
+	require.NotContains(t, got, "tok.Field(",
+		"naive rename must stay blocked under v4 typing")
+	require.NotContains(t, got, "tok.Get(\"keyid\", &gotKid)",
+		"original v3 call shape must be gone after rewrite")
 }
 
 // TestFixGetToField_NoNaiveRename_OnUnhandledShape pins the safety

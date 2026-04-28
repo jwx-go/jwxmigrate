@@ -1,6 +1,8 @@
 package main
 
 import (
+	"go/ast"
+	"go/types"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -166,6 +168,93 @@ var _ = jwk.Import
 `), 0o644))
 	require.Empty(t, prescanModule(nested).Patterns, "nested go.mod should prune scan")
 	require.Equal(t, []string{"."}, prescanModule(child).Patterns)
+}
+
+// TestPrescanModule_AlreadyMigratedImports pins the order-independence
+// counterpart of TestPrescanModule: a module whose imports were
+// rewritten to v4 ahead of running jwxmigrate must still show up in the
+// prescan so the fix path gets a chance to look at it. Before the
+// broadened gate, V3Files was empty here and the file was silently
+// excluded from every downstream pass.
+func TestPrescanModule_AlreadyMigratedImports(t *testing.T) {
+	mod := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(mod, "go.mod"),
+		[]byte("module example.com/m\n\ngo 1.26\n"), 0o644))
+
+	v4File := filepath.Join(mod, "a.go")
+	require.NoError(t, os.WriteFile(v4File, []byte(`package m
+
+import "github.com/lestrrat-go/jwx/v4/jwt"
+
+var _ = jwt.SubjectKey
+`), 0o644))
+
+	ps := prescanModule(mod)
+	require.Equal(t, []string{"."}, ps.Patterns)
+	require.Equal(t, []string{v4File}, ps.V3Files)
+}
+
+// TestParseGoFile_MixedV3AndV4Imports covers partial-migration files —
+// some imports rewritten, some not. Both must end up in JwxImports so
+// the rewriter has every local name it needs to resolve receiver
+// packages.
+func TestParseGoFile_MixedV3AndV4Imports(t *testing.T) {
+	src := `package sample
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
+)
+
+var _ = jwk.Import
+var _ = jwt.SubjectKey
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.go")
+	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
+
+	pf, err := parseGoFile(path, "a.go")
+	require.NoError(t, err)
+	require.NotNil(t, pf)
+	require.Equal(t, "github.com/lestrrat-go/jwx/v3/jwk", pf.JwxImports["jwk"])
+	require.Equal(t, "github.com/lestrrat-go/jwx/v4/jwt", pf.JwxImports["jwt"])
+}
+
+// TestIsJwxType_AcceptsBothVersions exercises the type-aware gate
+// directly. It synthesizes named types in v3 and v4 jwx packages and
+// confirms isJwxType returns true for both — and false for unrelated
+// packages and unresolved expressions.
+func TestIsJwxType_AcceptsBothVersions(t *testing.T) {
+	v3Pkg := types.NewPackage("github.com/lestrrat-go/jwx/v3/jwt", "jwt")
+	v4Pkg := types.NewPackage("github.com/lestrrat-go/jwx/v4/jwt", "jwt")
+	otherPkg := types.NewPackage("example.com/other", "other")
+
+	mkType := func(pkg *types.Package, name string) types.Type {
+		obj := types.NewTypeName(0, pkg, name, nil)
+		return types.NewNamed(obj, types.NewStruct(nil, nil), nil)
+	}
+	v3Type := mkType(v3Pkg, "Token")
+	v4Type := mkType(v4Pkg, "Token")
+	otherType := mkType(otherPkg, "Thing")
+
+	v3Expr := &ast.Ident{Name: "tokV3"}
+	v4Expr := &ast.Ident{Name: "tokV4"}
+	otherExpr := &ast.Ident{Name: "thing"}
+	unknownExpr := &ast.Ident{Name: "mystery"}
+
+	info := &types.Info{Types: map[ast.Expr]types.TypeAndValue{
+		v3Expr:    {Type: v3Type},
+		v4Expr:    {Type: v4Type},
+		otherExpr: {Type: otherType},
+	}}
+
+	require.True(t, isJwxType(info, v3Expr), "v3 receiver type qualifies")
+	require.True(t, isJwxType(info, v4Expr), "v4 receiver type qualifies — order-independence")
+	require.False(t, isJwxType(info, otherExpr), "unrelated package is not a jwx type")
+	require.False(t, isJwxType(info, unknownExpr), "expression with no resolved type returns false")
+
+	require.True(t, typeIsFromJwx(types.NewPointer(v3Type)), "pointer to v3 named type unwraps")
+	require.True(t, typeIsFromJwx(types.NewPointer(v4Type)), "pointer to v4 named type unwraps")
 }
 
 func TestNamePatternMatchesWildcardFamily(t *testing.T) {
