@@ -61,6 +61,31 @@ func TestFixBuildFileSkipsGoModWithoutJwxV3(t *testing.T) {
 	require.Nil(t, result)
 }
 
+// TestFixBuildFileIdempotentOnJwxV4 pins that a go.mod already pinned at
+// the migration's target version is left alone — fixGoMod returns nil
+// (no edits) so the batch doesn't trigger an unnecessary `go mod tidy`
+// or report a spurious "applied" entry. The contract matters for the
+// order-independence path: a user who ran `go get jwx/v4` before
+// invoking `--fix` shouldn't see jwxmigrate undo and redo their work.
+func TestFixBuildFileIdempotentOnJwxV4(t *testing.T) {
+	tmpDir := t.TempDir()
+	gomodPath := filepath.Join(tmpDir, goModFilename)
+	original := "module example\n\ngo 1.25\n\nrequire github.com/lestrrat-go/jwx/v4 v4.0.0\n"
+	require.NoError(t, os.WriteFile(gomodPath, []byte(original), 0o644))
+
+	rules, err := loadRules("v3-to-v4")
+	require.NoError(t, err)
+
+	result, err := FixBuildFile(gomodPath, rules)
+	require.NoError(t, err)
+	require.Nil(t, result, "no v3 require entries means no fixes to apply")
+
+	got, err := os.ReadFile(gomodPath)
+	require.NoError(t, err)
+	require.Equal(t, original, string(got),
+		"go.mod content must be byte-identical when nothing was rewritten")
+}
+
 func TestFixBuildFileRewritesJwxV3RequireBlock(t *testing.T) {
 	tmpDir := t.TempDir()
 	gomodPath := filepath.Join(tmpDir, goModFilename)
