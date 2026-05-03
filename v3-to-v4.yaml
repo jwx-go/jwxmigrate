@@ -375,14 +375,17 @@ rules:
     v3: RegisterKeyImporter
     v4: RegisterKeyImporter
     v3_signature: "RegisterKeyImporter(from any, conv KeyImporter)"
-    v4_signature: "RegisterKeyImporter[T any](fn func(T) (Key, error))"
+    v4_signature: "RegisterKeyImporter[T any](ki KeyImporter[T]) error"
     search_patterns:
       - 'RegisterKeyImporter\('
     compiler_hints:
       - 'too many arguments in call to jwk.RegisterKeyImporter'
     note: >
-      RegisterKeyImporter now uses a generic type parameter instead of a dummy value
-      for type dispatch. The KeyImporter interface is replaced by a plain function.
+      RegisterKeyImporter now takes a generic KeyImporter[T] interface keyed
+      on the source raw key type. The KeyImportFunc[T] adapter is the canonical
+      way to register a typed function — pass the raw importer wrapped in
+      jwk.KeyImportFunc[T](...). The dummy first argument (sample value used
+      for type dispatch) is gone; T is taken from the adapter's type parameter.
     example:
       before: |
         jwk.RegisterKeyImporter(&myKeyType{}, jwk.KeyImportFunc(func(raw any) (jwk.Key, error) {
@@ -393,9 +396,9 @@ rules:
             // convert src to JWK
         }))
       after: |
-        jwk.RegisterKeyImporter(func(src *myKeyType) (jwk.Key, error) {
+        jwk.RegisterKeyImporter(jwk.KeyImportFunc[*myKeyType](func(src *myKeyType) (jwk.Key, error) {
             // convert src to JWK — no type assertion needed
-        })
+        }))
 
   - id: jwk-publicsetof-default-reject-symmetric
     kind: behavioral
@@ -584,7 +587,7 @@ rules:
             // use key
         }
 
-  - id: jwk-keyimporter-type-removed
+  - id: jwk-keyimporter-type-now-generic
     kind: type_change
     package: jwk
     mechanical: false
@@ -593,14 +596,16 @@ rules:
       - 'KeyImporter\b'
       - 'KeyImportFunc\('
     compiler_hints:
-      - 'undefined: jwk.KeyImporter'
-      - 'undefined: jwk.KeyImportFunc'
+      - 'cannot use generic type jwk.KeyImporter'
+      - 'cannot use generic type jwk.KeyImportFunc'
     note: >
-      The KeyImporter interface and the KeyImportFunc constructor are both
-      removed. There is no 1:1 type replacement: in v4 the importer is just
-      a plain generic function `func(T) (jwk.Key, error)` passed directly to
-      jwk.RegisterKeyImporter[T]. Migrate call sites manually; see the
-      jwk-register-key-importer rule.
+      KeyImporter and KeyImportFunc are now generic: KeyImporter[T any] and
+      KeyImportFunc[T any]. Bare references to jwk.KeyImporter or
+      jwk.KeyImportFunc no longer compile — both require an explicit type
+      parameter naming the raw key type. Custom implementations of the
+      interface must be rewritten as struct types with an Import(T) (Key, error)
+      method (or use KeyImportFunc[T] for typed functions). See the
+      jwk-register-key-importer rule for the registration call shape.
 
   - id: jwk-registerprobefield-generic
     kind: signature_change
