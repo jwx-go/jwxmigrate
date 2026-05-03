@@ -397,6 +397,22 @@ rules:
             // convert src to JWK — no type assertion needed
         })
 
+  - id: jwk-publicsetof-default-reject-symmetric
+    kind: behavioral
+    package: jwk
+    mechanical: false
+    v3: "jwk.PublicSetOf(set) (silent pass-through for symmetric keys)"
+    v4: "jwk.PublicSetOf(set) (errors on oct keys) / jwk.PublicSetOf(set, jwk.WithAllowSymmetric(true))"
+    search_patterns:
+      - 'jwk\.PublicSetOf\('
+    note: >
+      v4 changes the default to return an error when the input set contains
+      any symmetric (oct) key. A symmetric key has no public form, and
+      publishing such a set (e.g. as /.well-known/jwks.json) would leak
+      secret material. To opt back into the v3 silent pass-through, pass
+      jwk.WithAllowSymmetric(true). Otherwise, filter symmetric keys out
+      of the input set before calling PublicSetOf.
+
   - id: jwk-cache-removed
     kind: removed
     package: jwk

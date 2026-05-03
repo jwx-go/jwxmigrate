@@ -1,0 +1,49 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwk"
+)
+
+// Behavioral rule: v4 PublicSetOf default-rejects sets containing
+// symmetric (oct) keys. v3 silently included them in the output.
+// Existing call sites still compile against v4, but may start
+// returning an error at runtime if the input contains an oct key.
+
+func publish(set jwk.Set) (jwk.Set, error) {
+	return jwk.PublicSetOf(set)
+}
+
+// Explicit opt-in to the v3 pass-through behavior — also flagged so
+// the migrator knows it's a deliberate choice rather than a missed
+// behavior change.
+func publishLegacy(set jwk.Set) (jwk.Set, error) {
+	return jwk.PublicSetOf(set, jwk.WithAllowSymmetric(true))
+}
+-- want_check.txt --
+main.go:13: [jwk-publicsetof-default-reject-symmetric] (manual) return jwk.PublicSetOf(set)
+main.go:20: [jwk-publicsetof-default-reject-symmetric] (manual) return jwk.PublicSetOf(set, jwk.WithAllowSymmetric(true))
+
+total=2 mechanical=0 manual=2
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwk"
+)
+
+// Behavioral rule: v4 PublicSetOf default-rejects sets containing
+// symmetric (oct) keys. v3 silently included them in the output.
+// Existing call sites still compile against v4, but may start
+// returning an error at runtime if the input contains an oct key.
+
+func publish(set jwk.Set) (jwk.Set, error) {
+	return jwk.PublicSetOf(set)
+}
+
+// Explicit opt-in to the v3 pass-through behavior — also flagged so
+// the migrator knows it's a deliberate choice rather than a missed
+// behavior change.
+func publishLegacy(set jwk.Set) (jwk.Set, error) {
+	return jwk.PublicSetOf(set, jwk.WithAllowSymmetric(true))
+}
