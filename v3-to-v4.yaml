@@ -160,22 +160,24 @@ rules:
       - 'jwt\.Settings\('
       - 'jws\.Settings\('
       - 'jwe\.Settings\('
+      - 'jwk\.Settings\('
       - 'cert\.Settings\('
     compiler_hints:
       - 'jwt.Settings() .* used as value'
       - 'jws.Settings() .* used as value'
       - 'jwe.Settings() .* used as value'
+      - 'jwk.Settings() .* used as value'
       - 'cert.Settings() .* used as value'
     note: >
-      jwt.Settings, jws.Settings, jwe.Settings, cert.Settings (and the renamed
-      jwx.Settings — see rename-decodersettings-to-settings) now return error
-      instead of panicking or silently accepting invalid input. Each package
-      validates its own options (size limits, nil encoders, etc.). Wrap the
-      call in an `if err := ...; err != nil` check, or explicitly discard the
-      return value with `_ =`. Extension modules that install a backend in
-      init() should panic on error, matching the house style for Register*
-      failures. jwk.Settings remains void — its options have no validatable
-      state today.
+      jwt.Settings, jws.Settings, jwe.Settings, jwk.Settings, cert.Settings
+      (and the renamed jwx.Settings — see rename-decodersettings-to-settings)
+      now return error instead of panicking or silently accepting invalid
+      input. Each package validates its own options (size limits, nil
+      encoders, etc.) — for example, jwk.Settings(jwk.WithMaxKeys(n))
+      rejects n <= 0. Wrap the call in an `if err := ...; err != nil`
+      check, or explicitly discard the return value with `_ =`. Extension
+      modules that install a backend in init() should panic on error,
+      matching the house style for Register* failures.
     example:
       before: |
         jwt.Settings(jwt.WithMaxParseInputSize(1 << 20))
@@ -1780,6 +1782,146 @@ rules:
         // Build with: go build -tags=jwx_asmbase64
       after: |
         import _ "github.com/jwx-go/asmbase64/v4"
+
+  # ============================================================
+  # Behavioral Changes — Cross-Package
+  # ============================================================
+
+  - id: unregister-returns-error
+    kind: behavioral
+    package: all
+    mechanical: false
+    v3: "Unregister*(...) (void)"
+    v4: "Unregister*(...) error"
+    search_patterns:
+      - '\b(jwk|jws|jwe|jwt|openid)\.Unregister[A-Za-z]+\('
+    compiler_hints:
+      - 'Unregister.* used as value'
+    note: >
+      Multiple Unregister* functions across jwk, jws, jwe, jwt, and jwt/openid
+      now return error instead of being void — matching their Register*
+      counterparts (e.g. jwk.UnregisterCustomField, jws.UnregisterSigner,
+      jws.UnregisterVerifier, jws.UnregisterCustomField, jwe.UnregisterCustomField,
+      jwt.UnregisterCustomField, jwt/openid.UnregisterCustomField,
+      jwk.UnregisterKeyUsage, jwk.UnregisterKeyImporter). Statement-style use
+      keeps compiling; expression-site use breaks. Discard the return with
+      `_ =` or branch on it. The narrowly-scoped jwk-unregisterx509decoder-moved
+      rule still applies for that single symbol's relocation to jwk/jwkbb.
+    example:
+      before: |
+        jws.UnregisterSigner(jwa.RS256())
+      after: |
+        if err := jws.UnregisterSigner(jwa.RS256()); err != nil {
+            return err
+        }
+
+  # ============================================================
+  # Behavioral Changes — JWS
+  # ============================================================
+
+  - id: jws-sign-kid-mismatch
+    kind: behavioral
+    package: jws
+    mechanical: false
+    v3: "jws.Sign(payload, jws.WithKey(jwkWithKid), jws.WithProtectedHeaders(hdrsWithDifferentKid)) — last writer wins, silently"
+    v4: "jws.Sign(...) — errors when WithKey's JWK kid and WithProtectedHeaders' kid disagree"
+    search_patterns:
+      - 'jws\.WithProtectedHeaders\('
+    note: >
+      v4 jws.Sign returns an error when the JWK supplied via jws.WithKey
+      carries a non-empty `kid` AND the headers supplied via
+      jws.WithProtectedHeaders carry a different non-empty `kid`. v3 silently
+      overwrote the protected header's kid with the JWK's kid, hiding the
+      conflict. Code that signed cleanly in v3 will now error at runtime —
+      not at compile time, so the migration tool flags every WithProtectedHeaders
+      call as a manual-review item.
+
+      Recommended fix: set kid on the JWK once (via jwk.Set or at construction)
+      and don't repeat it via WithProtectedHeaders. If both are present, make
+      sure they agree. Suppress this finding only after auditing that
+      the protected-header kid matches the JWK kid (or that the JWK has no
+      kid at all).
+    example:
+      before: |
+        // v3: silently used JWK's kid, dropped the protected-header one
+        hdrs := jws.NewHeaders()
+        _ = hdrs.Set(jws.KeyIDKey, "header-kid")
+        signed, _ := jws.Sign(payload,
+            jws.WithKey(alg, jwkWithDifferentKid),
+            jws.WithProtectedHeaders(hdrs),
+        )
+      after: |
+        // v4: set kid on the JWK only
+        _ = jwkKey.Set(jwk.KeyIDKey, "kid")
+        signed, err := jws.Sign(payload, jws.WithKey(alg, jwkKey))
+        if err != nil { return err }
+
+  - id: jws-verifycompactfast-strict-base64
+    kind: behavioral
+    package: jws
+    mechanical: false
+    v3: "jws.VerifyCompactFast (auto-detecting base64)"
+    v4: "jws.VerifyCompactFast (strict base64url, no padding)"
+    search_patterns:
+      - 'jws\.VerifyCompactFast\('
+    note: >
+      v4 jws.VerifyCompactFast switched from auto-detecting base64 to strict
+      base64url-without-padding (RFC 7515 §2). Tokens that round-tripped
+      through non-conformant producers — emitting padded base64, or std
+      encoding — verified in v3 and now fail. There is no permissive escape
+      hatch on VerifyCompactFast itself; the slow path jws.Verify still
+      auto-detects. Migrate either by fixing the producer (the spec-correct
+      fix) or by switching the call site to jws.Verify when interoperability
+      with non-conformant producers is required.
+    example:
+      before: |
+        // v3: lenient base64 by default
+        msg, _ := jws.VerifyCompactFast(token, jws.WithKey(alg, key))
+      after: |
+        // v4: strict base64url; for legacy producers, use jws.Verify instead
+        msg, err := jws.Verify(token, jws.WithKey(alg, key))
+
+  # ============================================================
+  # Behavioral Changes — JWE
+  # ============================================================
+
+  - id: jwe-pbes2-defaults-raised
+    kind: behavioral
+    package: jwe
+    mechanical: false
+    v3: "jwe.Encrypt with PBES2 algs (default p2c=10000)"
+    v4: "jwe.Encrypt with PBES2 algs (default p2c=600000/210000/210000); jwe.Decrypt accepts up to 1000000"
+    search_patterns:
+      - 'jwa\.PBES2_HS256_A128KW\('
+      - 'jwa\.PBES2_HS384_A192KW\('
+      - 'jwa\.PBES2_HS512_A256KW\('
+    note: >
+      v4 jwe.Encrypt emits PBES2 iteration counts (p2c) far higher than v3's
+      flat 10,000 default — 600,000 for PBES2-HS256+A128KW and 210,000 for
+      the larger variants — aligning with current OWASP recommendations.
+      v4 jwe.Decrypt accepts p2c up to 1,000,000.
+
+      Interop break in staged rollouts: v4-encrypted JWEs are rejected by
+      unpatched v3 decryptors (v3's max is 10,000). For a v3↔v4 mixed
+      deployment, EITHER (a) lower the v4 producer's p2c via
+      jwe.WithPBES2Count(10000) until v3 callers are upgraded, OR
+      (b) raise the v3 consumer's cap via jwe.Settings(jwe.WithMaxPBES2Count(...))
+      before deploying v4 producers.
+
+      Not a Go-compile-detectable change; manual review at every PBES2 call
+      site is the only safe path during transition.
+    example:
+      before: |
+        // v3 producer + v3 consumer: defaults match, no action
+        encrypted, _ := jwe.Encrypt(payload,
+            jwe.WithKey(jwa.PBES2_HS256_A128KW(), password),
+        )
+      after: |
+        // v4 producer + v3 consumer (transitional): downgrade p2c
+        encrypted, err := jwe.Encrypt(payload,
+            jwe.WithKey(jwa.PBES2_HS256_A128KW(), password,
+                jwe.WithPBES2Count(10000)),
+        )
 
   # ============================================================
   # Dependency Changes

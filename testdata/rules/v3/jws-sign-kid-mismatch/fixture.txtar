@@ -1,0 +1,44 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jws"
+)
+
+// v4 jws.Sign returns an error when the JWK's kid disagrees with the
+// kid in WithProtectedHeaders. v3 silently used the JWK's kid.
+
+func sign(jwkKey jwk.Key, payload []byte) ([]byte, error) {
+	hdrs := jws.NewHeaders()
+	_ = hdrs.Set(jws.KeyIDKey, "header-kid")
+	return jws.Sign(payload,
+		jws.WithKey(jwa.RS256(), jwkKey),
+		jws.WithProtectedHeaders(hdrs),
+	)
+}
+-- want_check.txt --
+main.go:17: [jws-sign-kid-mismatch] (manual) jws.WithProtectedHeaders(hdrs),
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
+)
+
+// v4 jws.Sign returns an error when the JWK's kid disagrees with the
+// kid in WithProtectedHeaders. v3 silently used the JWK's kid.
+
+func sign(jwkKey jwk.Key, payload []byte) ([]byte, error) {
+	hdrs := jws.NewHeaders()
+	_ = hdrs.Set(jws.KeyIDKey, "header-kid")
+	return jws.Sign(payload,
+		jws.WithKey(jwa.RS256(), jwkKey),
+		jws.WithProtectedHeaders(hdrs),
+	)
+}

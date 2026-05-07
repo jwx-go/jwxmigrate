@@ -1,0 +1,36 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jws"
+)
+
+// v4 jws.VerifyCompactFast switched from auto-detecting base64 to
+// strict base64url-without-padding. Tokens from non-conformant
+// producers that verified in v3 now fail.
+
+func verifyFast(token []byte, key any) error {
+	_, err := jws.VerifyCompactFast(token, jws.WithKey(jwa.RS256(), key))
+	return err
+}
+-- want_check.txt --
+main.go:13: [jws-verifycompactfast-strict-base64] (manual) _, err := jws.VerifyCompactFast(token, jws.WithKey(jwa.RS256(), key))
+
+total=1 mechanical=0 manual=1
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jws"
+)
+
+// v4 jws.VerifyCompactFast switched from auto-detecting base64 to
+// strict base64url-without-padding. Tokens from non-conformant
+// producers that verified in v3 now fail.
+
+func verifyFast(token []byte, key any) error {
+	_, err := jws.VerifyCompactFast(token, jws.WithKey(jwa.RS256(), key))
+	return err
+}
