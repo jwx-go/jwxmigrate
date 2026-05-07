@@ -1,0 +1,40 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jws"
+)
+
+// v4 changed multiple Unregister* functions across jwk, jws, jwe, jwt,
+// jwt/openid from void to error-returning. Statement-style use compiles;
+// expression-site use breaks.
+
+func cleanup() {
+	jws.UnregisterSigner(jwa.RS256())
+	jws.UnregisterVerifier(jwa.RS256())
+	jws.UnregisterCustomField("ext")
+}
+-- want_check.txt --
+main.go:13: [unregister-returns-error] (manual) jws.UnregisterSigner(jwa.RS256())
+main.go:14: [unregister-returns-error] (manual) jws.UnregisterVerifier(jwa.RS256())
+main.go:15: [unregister-returns-error] (manual) jws.UnregisterCustomField("ext")
+
+total=3 mechanical=0 manual=3
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jws"
+)
+
+// v4 changed multiple Unregister* functions across jwk, jws, jwe, jwt,
+// jwt/openid from void to error-returning. Statement-style use compiles;
+// expression-site use breaks.
+
+func cleanup() {
+	jws.UnregisterSigner(jwa.RS256())
+	jws.UnregisterVerifier(jwa.RS256())
+	jws.UnregisterCustomField("ext")
+}

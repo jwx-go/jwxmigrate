@@ -1,0 +1,51 @@
+-- input/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwe"
+)
+
+// v4 raises the default PBES2 iteration count from v3's 10000 to
+// 600000/210000/210000 per variant. Mixed v3↔v4 deployments break
+// unless the producer downgrades p2c or the consumer raises its cap.
+
+func encrypt(password []byte, payload []byte) ([]byte, error) {
+	return jwe.Encrypt(payload,
+		jwe.WithKey(jwa.PBES2_HS256_A128KW(), password),
+	)
+}
+
+func encryptLarge(password []byte, payload []byte) ([]byte, error) {
+	return jwe.Encrypt(payload,
+		jwe.WithKey(jwa.PBES2_HS512_A256KW(), password),
+	)
+}
+-- want_check.txt --
+main.go:14: [jwe-pbes2-defaults-raised] (manual) jwe.WithKey(jwa.PBES2_HS256_A128KW(), password),
+main.go:20: [jwe-pbes2-defaults-raised] (manual) jwe.WithKey(jwa.PBES2_HS512_A256KW(), password),
+
+total=2 mechanical=0 manual=2
+-- want_fix/main.go --
+package example
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwe"
+)
+
+// v4 raises the default PBES2 iteration count from v3's 10000 to
+// 600000/210000/210000 per variant. Mixed v3↔v4 deployments break
+// unless the producer downgrades p2c or the consumer raises its cap.
+
+func encrypt(password []byte, payload []byte) ([]byte, error) {
+	return jwe.Encrypt(payload,
+		jwe.WithKey(jwa.PBES2_HS256_A128KW(), password),
+	)
+}
+
+func encryptLarge(password []byte, payload []byte) ([]byte, error) {
+	return jwe.Encrypt(payload,
+		jwe.WithKey(jwa.PBES2_HS512_A256KW(), password),
+	)
+}

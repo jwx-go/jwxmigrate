@@ -2,23 +2,28 @@
 package example
 
 import (
+	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 func init() {
 	jwt.Settings(jwt.WithMaxParseInputSize(1 << 20))
+	jwk.Settings(jwk.WithMaxKeys(64))
 }
 -- want_check.txt --
-main.go:8: [settings-returns-error] (manual) jwt.Settings(jwt.WithMaxParseInputSize(1 << 20))
+main.go:9: [settings-returns-error] (manual) jwt.Settings(jwt.WithMaxParseInputSize(1 << 20))
+main.go:10: [settings-returns-error] (manual) jwk.Settings(jwk.WithMaxKeys(64))
 
-total=1 mechanical=0 manual=1
+total=2 mechanical=0 manual=2
 -- want_fix/main.go --
 package example
 
 import (
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/lestrrat-go/jwx/v4/jwt"
 )
 
 func init() {
 	jwt.Settings(jwt.WithMaxParseInputSize(1 << 20))
+	jwk.Settings(jwk.WithMaxKeys(64))
 }
