@@ -1,6 +1,20 @@
 Changes
 =======
 
+v4.0.3 7 May 2026
+  * Add four missing v3→v4 rules for behavioral changes that
+    `Changes-v4.md` documents but the migration tool wasn't
+    surfacing: `jws-sign-kid-mismatch` (kid conflict between
+    `WithKey` and `WithProtectedHeaders` is now an error in v4),
+    `jws-verifycompactfast-strict-base64` (strict base64url in v4),
+    `jwe-pbes2-defaults-raised` (10k → 600k/210k iteration count
+    default), and `unregister-returns-error` (nine `Unregister*`
+    functions across `jwk`/`jws`/`jwe`/`jwt`/`openid` changed from
+    void to error-returning).
+  * `settings-returns-error` rule now matches `jwk.Settings(...)`
+    too; previously only `jwt`/`jws`/`jwe`/`cert.Settings` were
+    patterned.
+
 v4.0.2 28 Apr 2026
   * Accept `go`-style `./...` target patterns on the command line.
   * Show the matching source line inline in finding diagnostics.
