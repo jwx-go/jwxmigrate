@@ -19,7 +19,7 @@ import (
 // root.
 func TestFindFixableFiles_DotRootIsNotSkipped(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.go"), []byte("package x\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, testGoFileName), []byte("package x\n"), 0o644))
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "sub", "b.go"), []byte("package x\n"), 0o644))
 
@@ -35,7 +35,7 @@ func TestFindFixableFiles_DotRootIsNotSkipped(t *testing.T) {
 // the failure should be collected into the summary so users get one
 // manifest of what was skipped.
 func TestFixFiles_ContinuesPastPerFileFailure(t *testing.T) {
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	dir := t.TempDir()
@@ -65,7 +65,7 @@ func TestFixFiles_ContinuesPastPerFileFailure(t *testing.T) {
 // returns errParseFailed, which FixFileWithOptions propagates so fixFiles
 // lists the file in the skipped-errors manifest.
 func TestFixFiles_SurfacesParseError(t *testing.T) {
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	dir := t.TempDir()

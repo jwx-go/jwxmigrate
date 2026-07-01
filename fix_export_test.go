@@ -57,7 +57,7 @@ func runExportFixOnFile(t *testing.T, root, src string) string {
 	mainPath := filepath.Join(callerDir, "main.go")
 	require.NoError(t, os.WriteFile(mainPath, []byte(src), 0o644))
 
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	_, err = FixFile(mainPath, rules)

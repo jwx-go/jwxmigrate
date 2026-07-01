@@ -8,6 +8,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Migration name identifiers.
+const (
+	migrationV3ToV4 = "v3-to-v4"
+	migrationV2ToV4 = "v2-to-v4"
+)
+
 //go:embed v3-to-v4.yaml
 var v3ToV4RulesYAML []byte
 
@@ -16,8 +22,8 @@ var v2ToV4RulesYAML []byte
 
 // migrations maps migration names to their embedded rule data.
 var migrations = map[string][]byte{
-	"v3-to-v4": v3ToV4RulesYAML,
-	"v2-to-v4": v2ToV4RulesYAML,
+	migrationV3ToV4: v3ToV4RulesYAML,
+	migrationV2ToV4: v2ToV4RulesYAML,
 }
 
 // RuleSet is the top-level structure of a migration YAML file.

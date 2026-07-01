@@ -19,7 +19,7 @@ func TestFormatJSON(t *testing.T) {
 		Mechanical: 1,
 		Judgment:   1,
 		Findings: []Finding{
-			{RuleID: "a", File: "a.go", Line: 1, Mechanical: true, Note: "note a"},
+			{RuleID: "a", File: testGoFileName, Line: 1, Mechanical: true, Note: "note a"},
 			{RuleID: "b", File: "b.go", Line: 2, Mechanical: false, Note: "note b"},
 		},
 	}
@@ -38,7 +38,7 @@ func TestFormatText(t *testing.T) {
 		Total:      1,
 		Mechanical: 1,
 		Findings: []Finding{
-			{RuleID: "import-v3-to-v4", File: "a.go", Line: 3, Mechanical: true, Note: "update import"},
+			{RuleID: importRuleID, File: testGoFileName, Line: 3, Mechanical: true, Note: "update import"},
 		},
 	}
 	var buf bytes.Buffer
@@ -46,7 +46,7 @@ func TestFormatText(t *testing.T) {
 
 	output := buf.String()
 	require.Contains(t, output, "Summary:")
-	require.Contains(t, output, "import-v3-to-v4")
+	require.Contains(t, output, importRuleID)
 	require.Contains(t, output, "a.go:3")
 }
 
@@ -60,8 +60,8 @@ func TestFormatText_IncludesSourceLine(t *testing.T) {
 		Mechanical: 1,
 		Findings: []Finding{
 			{
-				RuleID:     "import-v3-to-v4",
-				File:       "a.go",
+				RuleID:     importRuleID,
+				File:       testGoFileName,
 				Line:       3,
 				Mechanical: true,
 				Note:       "update import",
@@ -82,12 +82,12 @@ func TestFormatText_IncludesSourceLine(t *testing.T) {
 // keeps the diagnostic useful even when the triggering construct spans
 // a single line with surrounding context the user wants to see.
 func TestCheck_PopulatesSourceLine(t *testing.T) {
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	dir := t.TempDir()
 	src := "package x\n\nimport \"github.com/lestrrat-go/jwx/v3/jwk\"\n\nvar _ = jwk.Key(nil)\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.go"), []byte(src), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, testGoFileName), []byte(src), 0o644))
 
 	result, err := Check(dir, rules, CheckOptions{})
 	require.NoError(t, err)
@@ -95,7 +95,7 @@ func TestCheck_PopulatesSourceLine(t *testing.T) {
 
 	var importFinding *Finding
 	for i := range result.Findings {
-		if result.Findings[i].RuleID == "import-v3-to-v4" {
+		if result.Findings[i].RuleID == importRuleID {
 			importFinding = &result.Findings[i]
 			break
 		}

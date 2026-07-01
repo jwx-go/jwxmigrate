@@ -19,7 +19,7 @@ import (
 var ruleCoverageExemptions = map[string]map[string]bool{
 	// v3-to-v4: pilot PR ships fixtures for one rule per kind. Everything
 	// else is exempt and will be added in follow-up PRs.
-	"v3-to-v4": {
+	migrationV3ToV4: {
 		// jwk option/Cache* rules: realistic call-site coverage lives in
 		// testdata/edge/jwk-cache-options which exercises NewCache plus
 		// every With*/Option* symbol in a single scenario. Per-rule
@@ -63,7 +63,7 @@ var ruleCoverageExemptions = map[string]map[string]bool{
 	},
 	// v2-to-v4: deferred to final PR. Populated via init() below to keep
 	// this map legible.
-	"v2-to-v4": {},
+	migrationV2ToV4: {},
 }
 
 // v2ToV4Exemptions lists v2-to-v4 rule IDs that intentionally lack a
@@ -100,14 +100,14 @@ func init() {
 	for _, id := range v2ToV4Exemptions {
 		m[id] = true
 	}
-	ruleCoverageExemptions["v2-to-v4"] = m
+	ruleCoverageExemptions[migrationV2ToV4] = m
 }
 
 // TestEveryRuleHasFixture enumerates every loaded rule and asserts that a
 // fixture directory exists for it, minus exemptions. Adding a rule without a
 // fixture causes this test to fail.
 func TestEveryRuleHasFixture(t *testing.T) {
-	for _, migration := range []string{"v3-to-v4", "v2-to-v4"} {
+	for _, migration := range []string{migrationV3ToV4, migrationV2ToV4} {
 		t.Run(migration, func(t *testing.T) {
 			rules, err := loadRules(migration)
 			require.NoError(t, err)

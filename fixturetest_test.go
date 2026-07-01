@@ -40,7 +40,7 @@ type fixtureConfig struct {
 // defaultFixtureConfig returns the defaults for a fixture at the given
 // path, derived from its location under testdata/.
 func defaultFixtureConfig(fixtureDir string) *fixtureConfig {
-	cfg := &fixtureConfig{Migration: "v3-to-v4"}
+	cfg := &fixtureConfig{Migration: migrationV3ToV4}
 	abs, err := filepath.Abs(fixtureDir)
 	if err != nil {
 		return cfg
@@ -53,9 +53,9 @@ func defaultFixtureConfig(fixtureDir string) *fixtureConfig {
 			slug := parts[i+2]
 			switch slug {
 			case "v2":
-				cfg.Migration = "v2-to-v4"
+				cfg.Migration = migrationV2ToV4
 			case "v3":
-				cfg.Migration = "v3-to-v4"
+				cfg.Migration = migrationV3ToV4
 			}
 			if i+3 < len(parts) {
 				cfg.RuleID = parts[i+3]

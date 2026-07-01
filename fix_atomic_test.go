@@ -20,7 +20,7 @@ func TestWriteFormatted_AtomicRenameLeavesNoResidue(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("package example\n"), 0o644))
 
 	input := []byte("package example\n\nfunc Hello() string {return   \"hi\"}\n")
-	require.NoError(t, writeFormatted(path, input, []string{"rule-a"}, false))
+	require.NoError(t, writeFormatted(path, input, []string{testRuleAID}, false))
 
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
@@ -41,7 +41,7 @@ func TestWriteFormatted_FormatErrorLeavesNoResidue(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, original, 0o644))
 
 	broken := []byte("package example\n\nfunc Hello() string { return \n")
-	require.Error(t, writeFormatted(path, broken, []string{"rule-a"}, false))
+	require.Error(t, writeFormatted(path, broken, []string{testRuleAID}, false))
 
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
@@ -63,7 +63,7 @@ func TestWriteFormatted_BackupSavesOriginal(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, original, 0o644))
 
 	input := []byte("package example\n\nfunc New() {}\n")
-	require.NoError(t, writeFormatted(path, input, []string{"rule-a"}, true))
+	require.NoError(t, writeFormatted(path, input, []string{testRuleAID}, true))
 
 	bak, err := os.ReadFile(path + ".bak")
 	require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestWriteFormatted_NoBackupByDefault(t *testing.T) {
 	path := filepath.Join(dir, "main.go")
 	require.NoError(t, os.WriteFile(path, []byte("package example\n"), 0o644))
 
-	require.NoError(t, writeFormatted(path, []byte("package example\n\nfunc Hello() {}\n"), []string{"rule-a"}, false))
+	require.NoError(t, writeFormatted(path, []byte("package example\n\nfunc Hello() {}\n"), []string{testRuleAID}, false))
 
 	_, err := os.Stat(path + ".bak")
 	require.True(t, os.IsNotExist(err), "unexpected .bak file produced with backup=false")
