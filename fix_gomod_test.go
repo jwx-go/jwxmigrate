@@ -31,13 +31,13 @@ func TestFixBuildFileRewritesJwxV3RequireToV4(t *testing.T) {
 		"module example\n\ngo 1.25\n\nrequire github.com/lestrrat-go/jwx/v3 v3.0.13\n",
 	), 0o644))
 
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	result, err := FixBuildFile(gomodPath, rules)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Contains(t, result.Applied, "import-v3-to-v4")
+	require.Contains(t, result.Applied, importRuleID)
 
 	got, err := os.ReadFile(gomodPath)
 	require.NoError(t, err)
@@ -53,7 +53,7 @@ func TestFixBuildFileSkipsGoModWithoutJwxV3(t *testing.T) {
 		"module example\n\ngo 1.25\n\nrequire github.com/other/lib v1.0.0\n",
 	), 0o644))
 
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	result, err := FixBuildFile(gomodPath, rules)
@@ -73,7 +73,7 @@ func TestFixBuildFileIdempotentOnJwxV4(t *testing.T) {
 	original := "module example\n\ngo 1.25\n\nrequire github.com/lestrrat-go/jwx/v4 v4.0.0\n"
 	require.NoError(t, os.WriteFile(gomodPath, []byte(original), 0o644))
 
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	result, err := FixBuildFile(gomodPath, rules)
@@ -93,13 +93,13 @@ func TestFixBuildFileRewritesJwxV3RequireBlock(t *testing.T) {
 		"module example\n\ngo 1.25\n\nrequire (\n\tgithub.com/lestrrat-go/jwx/v3 v3.0.13\n\tgithub.com/other/lib v1.0.0\n)\n",
 	), 0o644))
 
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	result, err := FixBuildFile(gomodPath, rules)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Contains(t, result.Applied, "import-v3-to-v4")
+	require.Contains(t, result.Applied, importRuleID)
 
 	got, err := os.ReadFile(gomodPath)
 	require.NoError(t, err)
@@ -115,7 +115,7 @@ func TestFixBuildFileRewritesJwxV3RequireBlock(t *testing.T) {
 // and the generated go.mod carries a placeholder v4.0.0 that doesn't match
 // the toolchain's actual selection.
 func TestFixFilesRunsGoModTidyAfterRewrite(t *testing.T) {
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	dir := t.TempDir()
@@ -140,7 +140,7 @@ func TestFixFilesRunsGoModTidyAfterRewrite(t *testing.T) {
 // without a go.mod change is a waste and risks surprising the user with
 // unrelated dependency churn.
 func TestFixFilesSkipsGoModTidyWhenNoGoModRewritten(t *testing.T) {
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	dir := t.TempDir()

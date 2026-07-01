@@ -32,7 +32,7 @@ func skipOnWindows(t *testing.T, reason string) {
 // dropped on the floor, leaving the working tree unbuildable while
 // the tool reported success.
 func TestFixFiles_TidyFailureSurfaces(t *testing.T) {
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	dir := t.TempDir()
@@ -183,31 +183,31 @@ func TestFixDeleteStatement_PreservesContext(t *testing.T) {
 		{
 			name:     "bare call statement is deleted",
 			src:      "package x\nfunc F() {\n\tjwt.WithFS(fsys)\n}\n",
-			callExpr: "jwt.WithFS(fsys)",
+			callExpr: jwtWithFSCall,
 			wantNil:  false,
 		},
 		{
 			name:     "blank-LHS assign is deleted",
 			src:      "package x\nfunc F() {\n\t_ = jwt.WithFS(fsys)\n}\n",
-			callExpr: "jwt.WithFS(fsys)",
+			callExpr: jwtWithFSCall,
 			wantNil:  false,
 		},
 		{
 			name:     "named-LHS assign is refused",
 			src:      "package x\nfunc F() {\n\topt := jwt.WithFS(fsys)\n\t_ = opt\n}\n",
-			callExpr: "jwt.WithFS(fsys)",
+			callExpr: jwtWithFSCall,
 			wantNil:  true,
 		},
 		{
 			name:     "nested call in another expression is refused",
 			src:      "package x\nfunc F() {\n\tfoo(jwt.WithFS(fsys), other)\n}\n",
-			callExpr: "jwt.WithFS(fsys)",
+			callExpr: jwtWithFSCall,
 			wantNil:  true,
 		},
 		{
 			name:     "return value position is refused",
 			src:      "package x\nfunc F() any {\n\treturn jwt.WithFS(fsys)\n}\n",
-			callExpr: "jwt.WithFS(fsys)",
+			callExpr: jwtWithFSCall,
 			wantNil:  true,
 		},
 	}

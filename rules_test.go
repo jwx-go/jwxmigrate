@@ -7,7 +7,7 @@ import (
 )
 
 func TestLoadRules(t *testing.T) {
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 	require.NotEmpty(t, rules)
 
@@ -44,7 +44,7 @@ func TestRuleKinds(t *testing.T) {
 		kindBuildChange:      {},
 	}
 
-	for _, migration := range []string{"v3-to-v4", "v2-to-v4"} {
+	for _, migration := range []string{migrationV3ToV4, migrationV2ToV4} {
 		t.Run(migration, func(t *testing.T) {
 			rules, err := loadRules(migration)
 			require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestRuleKinds(t *testing.T) {
 }
 
 func TestLoadV2ToV4Rules(t *testing.T) {
-	rules, err := loadRules("v2-to-v4")
+	rules, err := loadRules(migrationV2ToV4)
 	require.NoError(t, err)
 	require.NotEmpty(t, rules)
 

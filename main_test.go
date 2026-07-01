@@ -17,13 +17,13 @@ func TestNormalizeTarget(t *testing.T) {
 	}{
 		{name: "empty stays empty", in: "", want: ""},
 		{name: "plain dot", in: ".", want: "."},
-		{name: "plain directory", in: "pkg", want: "pkg"},
-		{name: "rooted directory", in: "./pkg", want: "./pkg"},
+		{name: "plain directory", in: pkgDir, want: pkgDir},
+		{name: "rooted directory", in: rootedPkgDir, want: rootedPkgDir},
 		{name: "absolute path", in: "/abs/path", want: "/abs/path"},
 		{name: "bare ellipsis maps to current dir", in: "...", want: "."},
 		{name: "rooted ellipsis maps to current dir", in: "./...", want: "."},
-		{name: "rooted recursive", in: "./pkg/...", want: "./pkg"},
-		{name: "unrooted recursive", in: "pkg/...", want: "pkg"},
+		{name: "rooted recursive", in: "./pkg/...", want: rootedPkgDir},
+		{name: "unrooted recursive", in: "pkg/...", want: pkgDir},
 		{name: "deep recursive", in: "./a/b/...", want: "./a/b"},
 		{name: "trailing slash recursive", in: "./pkg/.../", wantErr: true},
 		{name: "ellipsis in middle", in: "./a/.../b", wantErr: true},
@@ -54,7 +54,7 @@ func TestRun_DotExpansion(t *testing.T) {
 	// A clean file with no jwx imports — runFix should walk into
 	// it and report "no mechanical fixes" rather than refusing on
 	// the literal "./..." path.
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.go"), []byte("package x\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, testGoFileName), []byte("package x\n"), 0o644))
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "sub", "b.go"), []byte("package y\n"), 0o644))
 

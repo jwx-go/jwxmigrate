@@ -27,10 +27,10 @@ var _ = jwk.Import
 var _ = jwtalias.SubjectKey
 `
 	dir := t.TempDir()
-	path := filepath.Join(dir, "a.go")
+	path := filepath.Join(dir, testGoFileName)
 	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
 
-	pf, err := parseGoFile(path, "a.go")
+	pf, err := parseGoFile(path, testGoFileName)
 	require.NoError(t, err)
 	require.NotNil(t, pf)
 	require.Contains(t, pf.JwxImports, "jwk")
@@ -55,10 +55,10 @@ var _ = jwk.Import[jwk.Key]
 var _ = jwtalias.SubjectKey
 `
 	dir := t.TempDir()
-	path := filepath.Join(dir, "a.go")
+	path := filepath.Join(dir, testGoFileName)
 	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
 
-	pf, err := parseGoFile(path, "a.go")
+	pf, err := parseGoFile(path, testGoFileName)
 	require.NoError(t, err)
 	require.NotNil(t, pf)
 	require.Equal(t, "github.com/lestrrat-go/jwx/v4/jwk", pf.JwxImports["jwk"])
@@ -93,10 +93,10 @@ import "fmt"
 var _ = fmt.Println
 `
 	dir := t.TempDir()
-	path := filepath.Join(dir, "a.go")
+	path := filepath.Join(dir, testGoFileName)
 	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
 
-	pf, err := parseGoFile(path, "a.go")
+	pf, err := parseGoFile(path, testGoFileName)
 	require.NoError(t, err)
 	require.Nil(t, pf, "file without v3 imports should return nil")
 }
@@ -107,7 +107,7 @@ func TestPrescanModule(t *testing.T) {
 
 	// Bare module with nothing importing jwx: empty Patterns skips packages.Load,
 	// empty V3Files skips phase 2.
-	require.NoError(t, os.WriteFile(filepath.Join(mod, "a.go"), []byte(`package m
+	require.NoError(t, os.WriteFile(filepath.Join(mod, testGoFileName), []byte(`package m
 
 import "fmt"
 
@@ -118,7 +118,7 @@ var _ = fmt.Println
 	require.Empty(t, ps.V3Files)
 
 	// Drop a v3 import into one subdir — only that directory should be listed.
-	sub := filepath.Join(mod, "pkg")
+	sub := filepath.Join(mod, pkgDir)
 	require.NoError(t, os.MkdirAll(sub, 0o755))
 	bGo := filepath.Join(sub, "b.go")
 	require.NoError(t, os.WriteFile(bGo, []byte(`package pkg
@@ -136,11 +136,11 @@ import "fmt"
 var _ = fmt.Println
 `), 0o644))
 	ps = prescanModule(mod)
-	require.Equal(t, []string{"./pkg"}, ps.Patterns)
+	require.Equal(t, []string{rootedPkgDir}, ps.Patterns)
 	require.Equal(t, []string{bGo}, ps.V3Files)
 
 	// Root package also importing v3: "." should show up.
-	aGo := filepath.Join(mod, "a.go")
+	aGo := filepath.Join(mod, testGoFileName)
 	require.NoError(t, os.WriteFile(aGo, []byte(`package m
 
 import "github.com/lestrrat-go/jwx/v3/jwt"
@@ -148,14 +148,14 @@ import "github.com/lestrrat-go/jwx/v3/jwt"
 var _ = jwt.SubjectKey
 `), 0o644))
 	ps = prescanModule(mod)
-	require.ElementsMatch(t, []string{".", "./pkg"}, ps.Patterns)
+	require.ElementsMatch(t, []string{".", rootedPkgDir}, ps.Patterns)
 	require.ElementsMatch(t, []string{aGo, bGo}, ps.V3Files)
 
 	// Nested go.mod must be pruned: v3 inside a submodule stays invisible
 	// to the parent scan.
 	nested := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(nested, "go.mod"), []byte("module example.com/parent\n\ngo 1.26\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(nested, "a.go"), []byte(`package parent
+	require.NoError(t, os.WriteFile(filepath.Join(nested, testGoFileName), []byte(`package parent
 `), 0o644))
 	child := filepath.Join(nested, "child")
 	require.NoError(t, os.MkdirAll(child, 0o755))
@@ -181,7 +181,7 @@ func TestPrescanModule_AlreadyMigratedImports(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(mod, "go.mod"),
 		[]byte("module example.com/m\n\ngo 1.26\n"), 0o644))
 
-	v4File := filepath.Join(mod, "a.go")
+	v4File := filepath.Join(mod, testGoFileName)
 	require.NoError(t, os.WriteFile(v4File, []byte(`package m
 
 import "github.com/lestrrat-go/jwx/v4/jwt"
@@ -210,10 +210,10 @@ var _ = jwk.Import
 var _ = jwt.SubjectKey
 `
 	dir := t.TempDir()
-	path := filepath.Join(dir, "a.go")
+	path := filepath.Join(dir, testGoFileName)
 	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
 
-	pf, err := parseGoFile(path, "a.go")
+	pf, err := parseGoFile(path, testGoFileName)
 	require.NoError(t, err)
 	require.NotNil(t, pf)
 	require.Equal(t, "github.com/lestrrat-go/jwx/v3/jwk", pf.JwxImports["jwk"])
@@ -259,7 +259,7 @@ func TestIsJwxType_AcceptsBothVersions(t *testing.T) {
 
 func TestNamePatternMatchesWildcardFamily(t *testing.T) {
 	// Rule using `jws\.Is\w+Error\(` should fire on any v2 IsXxxError call.
-	rules, err := loadRules("v2-to-v4")
+	rules, err := loadRules(migrationV2ToV4)
 	require.NoError(t, err)
 
 	src := `package example
@@ -295,7 +295,7 @@ func f(err error) {
 func TestImportPathMatchesRemovedSubpackage(t *testing.T) {
 	// jwk/x25519 was a v2 subpackage removed in v4. A rule with search
 	// pattern `jwk/x25519` should match the import structurally.
-	rules, err := loadRules("v2-to-v4")
+	rules, err := loadRules(migrationV2ToV4)
 	require.NoError(t, err)
 
 	src := `package example
@@ -378,7 +378,7 @@ func Run(raw any) {
 var _ = undefinedSymbolThatDoesNotExist
 `), 0o644))
 
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	// Drive the typed path directly. A covered main.go proves the

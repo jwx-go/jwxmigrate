@@ -35,7 +35,7 @@ func opts() []jwk.RegisterOption {
 	path := filepath.Join(dir, "main.go")
 	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
 
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	result, err := FixFile(path, rules)
@@ -78,7 +78,7 @@ var _ = jwk.RSAPrivateKey(nil)
 	path := filepath.Join(dir, "main.go")
 	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
 
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	result, err := FixFile(path, rules)
@@ -86,7 +86,7 @@ var _ = jwk.RSAPrivateKey(nil)
 	require.NotNil(t, result)
 
 	for _, f := range result.Remaining {
-		require.NotEqual(t, "import-v3-to-v4", f.RuleID,
+		require.NotEqual(t, importRuleID, f.RuleID,
 			"import-v3-to-v4 should be applied, not listed as remaining: %v", f)
 	}
 }
@@ -114,7 +114,7 @@ func load(dynamic string) {
 	path := filepath.Join(dir, "main.go")
 	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
 
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	result, err := FixFile(path, rules)

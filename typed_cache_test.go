@@ -17,7 +17,7 @@ func TestBuildTypedFileCache_PopulatesV3ImportingFiles(t *testing.T) {
 	// loadRules mutates sourceImportPrefix — without this, a prior test's
 	// v2-to-v4 run could leave the prescan looking for v2 imports while
 	// our fixture uses v3.
-	_, err := loadRules("v3-to-v4")
+	_, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	root := withStubJWKModule(t)
@@ -81,7 +81,7 @@ func Example(k jwk.Key) (any, error) {
 }
 `), 0o644))
 
-	rules, err := loadRules("v3-to-v4")
+	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
 	cache := buildTypedFileCache([]string{mainPath}, nil)
