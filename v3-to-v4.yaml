@@ -418,6 +418,29 @@ rules:
       jwk.WithAllowSymmetric(true). Otherwise, filter symmetric keys out
       of the input set before calling PublicSetOf.
 
+  - id: jwk-parse-retains-unsupported-keys
+    kind: behavioral
+    package: jwk
+    mechanical: false
+    v3: "jwk.Parse(JWK Set) (fails when a keys entry cannot be parsed)"
+    v4: "jwk.Parse(JWK Set) (retains an unparseable entry as jwk.UnsupportedKey)"
+    search_patterns:
+      - 'jwk\.Parse\('
+    note: >
+      v3 fails a JWK Set parse when any entry in the "keys" array cannot be
+      parsed. v4 retains that entry as a jwk.UnsupportedKey placeholder and
+      returns the rest of the set. This changes Set.Len(), iteration, and
+      LookupKeyID results. If this call must fail for an unparseable JWK Set
+      entry, pass jwk.WithStrictKeySetParsing(true). Otherwise, skip entries
+      for which jwk.IsUnsupportedKey returns true before using them. This
+      change applies only when the input is a JWK Set; parsing a single JWK
+      still returns an error.
+    example:
+      before: |
+        set, err := jwk.Parse(data)
+      after: |
+        set, err := jwk.Parse(data, jwk.WithStrictKeySetParsing(true))
+
   - id: jwk-cache-removed
     kind: removed
     package: jwk

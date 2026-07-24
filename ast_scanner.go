@@ -987,10 +987,44 @@ func sourceLineAt(src []byte, line int) string {
 // already have the right shape — for jwt-withverify-false-to-parseinsecure-v2,
 // that means silently disabling signature verification.
 func ruleArgPredicateOK(r *CompiledRule, call *ast.CallExpr) bool {
-	if r.ID != "jwt-withverify-false-to-parseinsecure-v2" {
+	switch r.ID {
+	case "jwt-withverify-false-to-parseinsecure-v2":
+		return slices.ContainsFunc(call.Args, isWithVerifyFalse)
+	case "jwk-parse-retains-unsupported-keys":
+		return !slices.ContainsFunc(call.Args, isJWKSetParseMode)
+	default:
 		return true
 	}
-	return slices.ContainsFunc(call.Args, isWithVerifyFalse)
+}
+
+// isJWKSetParseMode reports whether arg explicitly selects a JWK Set parsing
+// mode that preserves the caller's v3 behavior in v4. Strict mode does so for
+// either value. Ignore-parse-error mode does so only when it is explicitly
+// enabled; false leaves each version's different default in effect.
+func isJWKSetParseMode(arg ast.Expr) bool {
+	call, ok := arg.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	switch sel.Sel.Name {
+	case "WithStrictKeySetParsing":
+		return true
+	case "WithIgnoreParseError":
+		return len(call.Args) == 1 && isTrueLiteral(call.Args[0])
+	default:
+		return false
+	}
+}
+
+func isTrueLiteral(expr ast.Expr) bool {
+	ident, ok := expr.(*ast.Ident)
+	return ok && ident.Name == "true"
 }
 
 // extractNodeText extracts the source text corresponding to an AST node.
