@@ -1,7 +1,7 @@
 Changes
 =======
 
-UNRELEASED
+v4.0.4 24 July 2026
   * Add `jwk-parse-retains-unsupported-keys`, which reports v3 `jwk.Parse`
     calls whose JWK Set behavior changes in v4. v3 fails when an entry cannot
     be parsed; v4 retains it as a `jwk.UnsupportedKey` by default.
