@@ -1,0 +1,45 @@
+-- input/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v3/jwk"
+
+func parseSet(data []byte) (jwk.Set, error) {
+	return jwk.Parse(data)
+}
+
+func parseSetStrict(data []byte) (jwk.Set, error) {
+	return jwk.Parse(data, jwk.WithStrictKeySetParsing(true))
+}
+
+func parseSetDropInvalid(data []byte) (jwk.Set, error) {
+	return jwk.Parse(data, jwk.WithIgnoreParseError(true))
+}
+
+func parseSetKeepDefault(data []byte) (jwk.Set, error) {
+	return jwk.Parse(data, jwk.WithIgnoreParseError(false))
+}
+-- want_check.txt --
+main.go:6: [jwk-parse-retains-unsupported-keys] (manual) jwk.Parse(data)
+main.go:18: [jwk-parse-retains-unsupported-keys] (manual) jwk.Parse(data, jwk.WithIgnoreParseError(false))
+
+total=2 mechanical=0 manual=2
+-- want_fix/main.go --
+package example
+
+import "github.com/lestrrat-go/jwx/v4/jwk"
+
+func parseSet(data []byte) (jwk.Set, error) {
+	return jwk.Parse(data)
+}
+
+func parseSetStrict(data []byte) (jwk.Set, error) {
+	return jwk.Parse(data, jwk.WithStrictKeySetParsing(true))
+}
+
+func parseSetDropInvalid(data []byte) (jwk.Set, error) {
+	return jwk.Parse(data, jwk.WithIgnoreParseError(true))
+}
+
+func parseSetKeepDefault(data []byte) (jwk.Set, error) {
+	return jwk.Parse(data, jwk.WithIgnoreParseError(false))
+}

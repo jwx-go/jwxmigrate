@@ -55,9 +55,18 @@ func deriveASTMatchers(r *Rule) []ASTMatcher {
 		return deriveRemovedOrMoved(r)
 	case kindTypeChange:
 		return deriveTypeChange(r)
-	case kindBehavioral, kindBuildChange:
-		// No AST matchers — behavioral uses regex fallback,
-		// build_change targets non-Go files only.
+	case kindBehavioral:
+		if r.ID == "jwk-parse-retains-unsupported-keys" {
+			return []ASTMatcher{{
+				Kind:    MatchCallExpr,
+				PkgName: "jwk",
+				Name:    "Parse",
+			}}
+		}
+		// Behavioral rules normally use regex fallback.
+		return nil
+	case kindBuildChange:
+		// Build changes target non-Go files only.
 		return nil
 	default:
 		return nil
