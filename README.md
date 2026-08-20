@@ -41,7 +41,7 @@ The `...` suffix is only honored as the trailing path segment (e.g. `./...`, `./
 | Code | Meaning |
 |------|---------|
 | 0 | No v3 patterns found — migration complete |
-| 1 | Remaining v3 patterns detected |
+| 1 | Remaining v3 patterns detected, or a dependency is older than a reported rule needs |
 | 2 | Error (bad arguments, unreadable files, etc.) |
 
 ## Output
@@ -57,6 +57,21 @@ The `...` suffix is only honored as the trailing path segment (e.g. `./...`, `./
 
 Summary: 12 items remaining (4 mechanical, 8 require judgment)
 ```
+
+### Dependency versions
+
+Some rules tell you to use API that only exists from a particular release on.
+When your `go.mod` is older than a reported rule needs, that is reported too,
+against the `go.mod` line you have to change:
+
+```
+[jwk-parse-retains-unsupported-keys] (auto) go.mod:5: github.com/lestrrat-go/jwx/v4 v4.1.0
+  go.mod requires github.com/lestrrat-go/jwx/v4 v4.1.0, but rule
+  jwk-parse-retains-unsupported-keys needs v4.2.0.
+```
+
+`--fix` raises it for you. In JSON these findings carry `requires_module`,
+`requires_version`, and `current_version`; every other finding omits all three.
 
 ### JSON
 

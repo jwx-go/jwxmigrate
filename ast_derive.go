@@ -18,6 +18,10 @@ const (
 	kindTypeChange       = "type_change"
 	kindMovedToExtension = "moved_to_extension"
 	kindBuildChange      = "build_change"
+	// kindExtensionAbsorbed is the inverse of kindMovedToExtension: a feature
+	// the extension module used to provide now lives in the core module (or
+	// the standard library), so the extension is dropped rather than added.
+	kindExtensionAbsorbed = "extension_absorbed"
 )
 
 // Rule IDs referenced by name in the fixer dispatcher.
@@ -65,6 +69,8 @@ func deriveASTMatchers(r *Rule) []ASTMatcher {
 		}
 		// Behavioral rules normally use regex fallback.
 		return nil
+	case kindExtensionAbsorbed:
+		return deriveExtensionAbsorbed(r)
 	case kindBuildChange:
 		// Build changes target non-Go files only.
 		return nil
@@ -88,6 +94,32 @@ func deriveImportChange(r *Rule) []ASTMatcher {
 		Kind:       MatchImportSpec,
 		ImportPath: path,
 	}}
+}
+
+// deriveExtensionAbsorbed matches the extension module's import, which is
+// what gets deleted. A blank import has no other syntax to key off, and the
+// registration side effect is the whole reason the import is there.
+func deriveExtensionAbsorbed(r *Rule) []ASTMatcher {
+	if r.ExtensionModule == "" {
+		return nil
+	}
+	matchers := []ASTMatcher{{
+		Kind:       MatchImportSpec,
+		ImportPath: r.ExtensionModule,
+	}}
+
+	// When the extension is imported under a name and its symbols are called,
+	// deleting the import alone would leave them undefined. Match those calls
+	// too so they can be re-qualified against absorbed_into.
+	if r.AbsorbedInto != "" {
+		for _, name := range extractNamesFromPatterns(r) {
+			matchers = append(matchers,
+				ASTMatcher{Kind: MatchCallExpr, PkgName: r.Package, Name: name, ImportPath: r.ExtensionModule},
+				ASTMatcher{Kind: MatchSelectorExpr, PkgName: r.Package, Name: name, ImportPath: r.ExtensionModule},
+			)
+		}
+	}
+	return matchers
 }
 
 func deriveSignatureChange(r *Rule) []ASTMatcher {
@@ -209,8 +241,8 @@ func deriveRemovedOrMoved(r *Rule) []ASTMatcher {
 			// always derive both. Duplicate findings on the same line are
 			// deduped by the scanner.
 			matchers = append(matchers,
-				ASTMatcher{Kind: MatchCallExpr, PkgName: r.Package, Name: name},
-				ASTMatcher{Kind: MatchSelectorExpr, PkgName: r.Package, Name: name},
+				ASTMatcher{Kind: MatchCallExpr, PkgName: r.Package, Name: name, ImportPath: r.PackageImport},
+				ASTMatcher{Kind: MatchSelectorExpr, PkgName: r.Package, Name: name, ImportPath: r.PackageImport},
 			)
 		} else {
 			// package == "all": keep isCall gated because MatchMethodCall
@@ -325,8 +357,8 @@ func deriveTypeChange(r *Rule) []ASTMatcher {
 			// references (e.g. var _ jwk.KeyImporter = ...). The scanner
 			// dedupes findings per (ruleID, line).
 			matchers = append(matchers,
-				ASTMatcher{Kind: MatchCallExpr, PkgName: r.Package, Name: name},
-				ASTMatcher{Kind: MatchSelectorExpr, PkgName: r.Package, Name: name},
+				ASTMatcher{Kind: MatchCallExpr, PkgName: r.Package, Name: name, ImportPath: r.PackageImport},
+				ASTMatcher{Kind: MatchSelectorExpr, PkgName: r.Package, Name: name, ImportPath: r.PackageImport},
 			)
 		} else {
 			matchers = append(matchers, ASTMatcher{

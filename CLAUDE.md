@@ -31,6 +31,14 @@ jwxmigrate is a standalone CLI tool (`package main`). It loads migration rules f
 go test ./...
 ```
 
+## Pre-Read Rules
+
+Read the linked doc BEFORE working in that area. No exceptions.
+
+| Trigger | Doc |
+|---------|-----|
+| Adding/editing a rule that names an API, declaring `requires`, or changing how `go.mod` versions are pinned | `agents/docs/version-floors.md` |
+
 ## Authoring Rules and Fixtures
 
 A new rule is two files:
@@ -53,6 +61,11 @@ go test -update -run TestRulesFixtures/<migration>/<rule-id> ./...
 
 Review the regenerated `fixture.txtar` diff before committing — `-update`
 accepts whatever the tool produces as the new truth.
+
+A rule whose guidance names an API added after the ruleset's
+`minimum_target_version` also needs a `requires` block. Derive the version by
+the procedure in `agents/docs/version-floors.md`; NEVER guess it and NEVER use
+"latest".
 
 ### Defaults and overrides
 

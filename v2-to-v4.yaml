@@ -5,9 +5,14 @@
 #
 # Source: github.com/lestrrat-go/jwx/v2 → github.com/lestrrat-go/jwx/v4
 
-schema_version: "2"
+schema_version: "3"
 from: "github.com/lestrrat-go/jwx/v2"
 to: "github.com/lestrrat-go/jwx/v4"
+
+# Version written to a consumer's go.mod for `to` when no rule that fired asks
+# for more. Rules needing newer API raise it through their own `requires`
+# block. See agents/docs/version-floors.md before changing this.
+minimum_target_version: "v4.0.0"
 
 rules:
 

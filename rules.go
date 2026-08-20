@@ -31,30 +31,66 @@ type RuleSet struct {
 	SchemaVersion string `yaml:"schema_version"`
 	From          string `yaml:"from"`
 	To            string `yaml:"to"`
-	Rules         []Rule `yaml:"rules"`
+	// MinimumTargetVersion is the version of To written to a consumer's
+	// go.mod when no rule that fired asks for more. Rules that need newer
+	// API raise it through their own Requires block.
+	MinimumTargetVersion string `yaml:"minimum_target_version"`
+	Rules                []Rule `yaml:"rules"`
+}
+
+// Requires expresses the preconditions a rule's guidance depends on. A nil
+// *Requires means the rule applies unconditionally and the rule set's
+// MinimumTargetVersion is enough for it.
+type Requires struct {
+	// Go is a `go` directive value such as "1.27". A rule carrying one is
+	// suppressed entirely on projects below it, because its guidance cannot
+	// be acted on there.
+	Go string `json:"go,omitempty" yaml:"go,omitempty"`
+	// Modules are the module versions the rule's guidance needs in order to
+	// compile.
+	Modules []ModuleRequirement `json:"modules,omitempty" yaml:"modules,omitempty"`
+}
+
+// ModuleRequirement is one module version floor.
+type ModuleRequirement struct {
+	Path    string `json:"path"    yaml:"path"`
+	Version string `json:"version" yaml:"version"`
 }
 
 // Rule is a single migration rule.
 // The Old/New fields are populated from whichever version-specific YAML keys
 // are present (v2/v4 or v3/v4).
 type Rule struct {
-	ID              string   `yaml:"id"`
-	Kind            string   `yaml:"kind"`
-	Package         string   `yaml:"package"`
-	Mechanical      bool     `yaml:"mechanical"`
-	V2              string   `yaml:"v2,omitempty"`
-	V3              string   `yaml:"v3,omitempty"`
-	V4              string   `yaml:"v4,omitempty"`
-	V2Signature     string   `yaml:"v2_signature,omitempty"`
-	V3Signature     string   `yaml:"v3_signature,omitempty"`
-	V4Signature     string   `yaml:"v4_signature,omitempty"`
-	Replacement     string   `yaml:"replacement,omitempty"`
-	ExtensionModule string   `yaml:"extension_module,omitempty"`
-	SearchPatterns  []string `yaml:"search_patterns,omitempty"`
-	CompilerHints   []string `yaml:"compiler_hints,omitempty"`
-	FilePatterns    []string `yaml:"file_patterns,omitempty"`
-	Note            string   `yaml:"note"`
-	Example         *Example `yaml:"example,omitempty"`
+	ID      string `yaml:"id"`
+	Kind    string `yaml:"kind"`
+	Package string `yaml:"package"`
+	// PackageImport names the import path that Package refers to, for a rule
+	// targeting a package outside jwx. Without it a matcher can only resolve
+	// local names against the file's jwx imports.
+	PackageImport   string `yaml:"package_import,omitempty"`
+	Mechanical      bool   `yaml:"mechanical"`
+	V2              string `yaml:"v2,omitempty"`
+	V3              string `yaml:"v3,omitempty"`
+	V4              string `yaml:"v4,omitempty"`
+	V2Signature     string `yaml:"v2_signature,omitempty"`
+	V3Signature     string `yaml:"v3_signature,omitempty"`
+	V4Signature     string `yaml:"v4_signature,omitempty"`
+	Replacement     string `yaml:"replacement,omitempty"`
+	ExtensionModule string `yaml:"extension_module,omitempty"`
+	// AbsorbedInto is the import path that now provides what
+	// ExtensionModule used to, for an extension_absorbed rule whose symbols
+	// move rather than simply disappear.
+	AbsorbedInto   string   `yaml:"absorbed_into,omitempty"`
+	SearchPatterns []string `yaml:"search_patterns,omitempty"`
+	CompilerHints  []string `yaml:"compiler_hints,omitempty"`
+	FilePatterns   []string `yaml:"file_patterns,omitempty"`
+	Note           string   `yaml:"note"`
+	Example        *Example `yaml:"example,omitempty"`
+
+	// Requires holds the rule's preconditions. See agents/docs/version-floors.md
+	// for how to derive the values; they are a lookup against the target
+	// module's history, never a guess.
+	Requires *Requires `yaml:"requires,omitempty"`
 }
 
 // FromVersion returns the source version identifier (v2 or v3 field, whichever is set).
@@ -92,7 +128,10 @@ type CompiledRule struct {
 	ASTMatchers []ASTMatcher
 }
 
-func loadRules(migration string) ([]CompiledRule, error) {
+// parseRuleSet unmarshals a migration's embedded YAML without compiling
+// patterns or touching package state. Validation tests use it to inspect
+// rules as authored.
+func parseRuleSet(migration string) (*RuleSet, error) {
 	data, ok := migrations[migration]
 	if !ok {
 		return nil, fmt.Errorf("unknown migration %q; available: v3-to-v4, v2-to-v4", migration)
@@ -102,9 +141,18 @@ func loadRules(migration string) ([]CompiledRule, error) {
 	if err := yaml.Unmarshal(data, &rs); err != nil {
 		return nil, fmt.Errorf("failed to parse migration rules: %w", err)
 	}
+	return &rs, nil
+}
+
+func loadRules(migration string) ([]CompiledRule, error) {
+	rs, err := parseRuleSet(migration)
+	if err != nil {
+		return nil, err
+	}
 
 	sourceImportPrefix = rs.From
 	targetImportPrefix = rs.To
+	targetMinimumVersion = rs.MinimumTargetVersion
 
 	compiled := make([]CompiledRule, 0, len(rs.Rules))
 	for _, r := range rs.Rules {

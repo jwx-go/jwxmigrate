@@ -158,15 +158,22 @@ func fixFiles(files []string, rules []CompiledRule, opts FixOptions, out, errw i
 	if opts.typedCache == nil {
 		opts.typedCache = buildTypedFileCache(files, overlay)
 	}
-	for _, f := range files {
-		result, err := fixOneFile(f, rules, opts)
+
+	// go.mod is rewritten after the source files, never alongside them. The
+	// version to write depends on which rules fired in that module, and that
+	// is only known once the module's .go files have been through the fixer.
+	sources, goMods := partitionGoMods(files)
+	firedByRoot := map[string]map[string]struct{}{}
+
+	handle := func(f string, fired []CompiledRule) {
+		result, err := fixOneFile(f, rules, fired, opts)
 		if err != nil {
 			summary.failures = append(summary.failures, fixFailure{file: f, err: err})
 			_, _ = fmt.Fprintf(errw, "%s: skipped: %s\n", f, err)
-			continue
+			return
 		}
 		if result == nil {
-			continue
+			return
 		}
 		if len(result.Applied) > 0 {
 			summary.totalFixed += len(result.Applied)
@@ -178,6 +185,14 @@ func fixFiles(files []string, rules []CompiledRule, opts FixOptions, out, errw i
 			}
 		}
 		summary.remaining = append(summary.remaining, result.Remaining...)
+		recordFired(firedByRoot, f, result)
+	}
+
+	for _, f := range sources {
+		handle(f, nil)
+	}
+	for _, f := range goMods {
+		handle(f, firedRulesFor(rules, firedByRoot, f))
 	}
 
 	for _, dir := range summary.goModDirs {
@@ -224,11 +239,62 @@ func fixFiles(files []string, rules []CompiledRule, opts FixOptions, out, errw i
 // .go files use the AST-based FixFileWithOptions, go.mod uses the
 // modfile-based FixBuildFile. Anything else returns nil so the caller
 // treats it as a no-op.
-func fixOneFile(filePath string, rules []CompiledRule, opts FixOptions) (*FixResult, error) {
+func fixOneFile(filePath string, rules, fired []CompiledRule, opts FixOptions) (*FixResult, error) {
 	if strings.HasSuffix(filePath, ".go") {
 		return FixFileWithOptions(filePath, rules, opts)
 	}
-	return FixBuildFile(filePath, rules)
+	return FixBuildFile(filePath, rules, fired)
+}
+
+// partitionGoMods splits a batch into source files and go.mod files,
+// preserving the original order within each group.
+func partitionGoMods(files []string) (sources, goMods []string) {
+	for _, f := range files {
+		if filepath.Base(f) == goModFilename {
+			goMods = append(goMods, f)
+			continue
+		}
+		sources = append(sources, f)
+	}
+	return sources, goMods
+}
+
+// recordFired notes which rules matched in the module owning file. Both
+// applied and remaining rules count: a rule needing human judgment still
+// tells the user to write API that has a version floor.
+func recordFired(byRoot map[string]map[string]struct{}, file string, result *FixResult) {
+	st, ok := moduleStateFor(file)
+	if !ok {
+		return
+	}
+	if byRoot[st.Root] == nil {
+		byRoot[st.Root] = map[string]struct{}{}
+	}
+	for _, id := range result.Applied {
+		byRoot[st.Root][id] = struct{}{}
+	}
+	for _, f := range result.Remaining {
+		byRoot[st.Root][f.RuleID] = struct{}{}
+	}
+}
+
+// firedRulesFor returns the rules that matched in the module owning goMod.
+func firedRulesFor(rules []CompiledRule, byRoot map[string]map[string]struct{}, goMod string) []CompiledRule {
+	st, ok := moduleStateFor(goMod)
+	if !ok {
+		return nil
+	}
+	ids := byRoot[st.Root]
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]CompiledRule, 0, len(ids))
+	for _, r := range rules {
+		if _, hit := ids[r.ID]; hit {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // snapshotBatchOverlay reads the pre-batch contents of every file in the

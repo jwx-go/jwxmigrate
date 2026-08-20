@@ -1,0 +1,35 @@
+-- input/go.mod --
+module example.com/consumer
+
+go 1.27
+
+require (
+	github.com/jwx-go/mldsa/v4 v4.0.4
+	github.com/lestrrat-go/jwx/v4 v4.4.0
+)
+-- input/main.go --
+package consumer
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwa"
+
+	_ "github.com/jwx-go/mldsa/v4"
+)
+
+func alg() jwa.SignatureAlgorithm {
+	return jwa.MLDSA44()
+}
+-- want_check.txt --
+main.go:6: [mldsa-extension-absorbed] (mechanical) _ "github.com/jwx-go/mldsa/v4"
+
+total=1 mechanical=1 manual=0
+-- want_fix/main.go --
+package consumer
+
+import (
+	"github.com/lestrrat-go/jwx/v4/jwa"
+)
+
+func alg() jwa.SignatureAlgorithm {
+	return jwa.MLDSA44()
+}
