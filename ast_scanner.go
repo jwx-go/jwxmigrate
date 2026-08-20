@@ -646,6 +646,17 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 		return basePkg == expectedPkg
 	}
 
+	// matchesMatcherPkg resolves the matcher's package. A matcher carrying an
+	// ImportPath names a package outside jwx, which localToBasePkg cannot
+	// resolve because it only holds jwx imports.
+	matchesMatcherPkg := func(m *ASTMatcher, localName string) bool {
+		if m.ImportPath != "" && m.Kind != MatchImportSpec {
+			want, ok := localNameForImport(pf.ASTFile, m.ImportPath)
+			return ok && want == localName
+		}
+		return matchesPkg(localName, m.PkgName)
+	}
+
 	addFinding := func(r *CompiledRule, n ast.Node, nodeKind string) {
 		pos := pf.FileSet.Position(n.Pos())
 		end := pf.FileSet.Position(n.End())
@@ -721,7 +732,7 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 					if !ruleArgPredicateOK(rm.rule, node) {
 						continue
 					}
-					if matchesPkg(ident.Name, rm.matcher.PkgName) {
+					if matchesMatcherPkg(rm.matcher, ident.Name) {
 						addFinding(rm.rule, node, "CallExpr")
 						continue
 					}
@@ -769,7 +780,7 @@ func scanGoFileAST(pf *ParsedGoFile, rules []CompiledRule, opts CheckOptions) []
 			selName := node.Sel.Name
 			if ident, ok := node.X.(*ast.Ident); ok {
 				for _, rm := range selectorMatchers {
-					if rm.matcher.MatchesName(selName) && matchesPkg(ident.Name, rm.matcher.PkgName) {
+					if rm.matcher.MatchesName(selName) && matchesMatcherPkg(rm.matcher, ident.Name) {
 						addFinding(rm.rule, node, "SelectorExpr")
 					}
 				}

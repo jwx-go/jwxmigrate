@@ -137,7 +137,21 @@ func fixGoMod(filePath string, rules, fired []CompiledRule) (*FixResult, error) 
 		applied[u.RuleID] = struct{}{}
 	}
 
-	// 3. Add companion modules that fired moved_to_extension rules point at,
+	// 3. Drop extension modules that a fired extension_absorbed rule says are
+	//    no longer needed. Their key packages fall out on their own: the Go
+	//    edits removed the imports, and fixFiles runs `go mod tidy` after any
+	//    go.mod rewrite.
+	for path, ruleID := range absorbedModules(fired) {
+		if _, present := currentRequires(mf)[path]; !present {
+			continue
+		}
+		if err := mf.DropRequire(path); err != nil {
+			return nil, fmt.Errorf("dropping %s from %s: %w", path, filePath, err)
+		}
+		applied[ruleID] = struct{}{}
+	}
+
+	// 4. Add companion modules that fired moved_to_extension rules point at,
 	//    at the floor those rules declare. Without a declared floor there is
 	//    no version to write, so the requirement is left for `go mod tidy`.
 	for path, r := range companionRequirements(fired) {

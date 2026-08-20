@@ -272,6 +272,17 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 		return ok && basePkg == expectedPkg
 	}
 
+	// matchesMatcherPkg resolves the matcher's package. A matcher carrying an
+	// ImportPath names a package outside jwx, which localToBasePkg cannot
+	// resolve because it only holds jwx imports.
+	matchesMatcherPkg := func(m *ASTMatcher, localName string) bool {
+		if m.ImportPath != "" && m.Kind != MatchImportSpec {
+			want, ok := localNameForImport(pf.ASTFile, m.ImportPath)
+			return ok && want == localName
+		}
+		return matchesPkg(localName, m.PkgName)
+	}
+
 	file := pf.FileSet.File(pf.ASTFile.Pos())
 	if file == nil {
 		return nil
@@ -329,6 +340,10 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 		return true
 	})
 
+	// Pre-collect StarExpr children so a selector match can find the `*`
+	// that needs deleting for a pointer-to-value type change.
+	starOf := starParents(pf.ASTFile)
+
 	for i := range rules {
 		r := &rules[i]
 		if !r.Mechanical && !canFixWithTypes(r, pf) {
@@ -352,6 +367,12 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					if !strings.Contains(importPath, m.ImportPath) {
 						return true
 					}
+					if r.Kind == kindExtensionAbsorbed {
+						if e := fixImportRemoval(pf, node, byteOffset); e != nil {
+							edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID, line: lineOf(node)})
+						}
+						return true
+					}
 					e := fixImportChange(pf, node, r, byteOffset)
 					if e != nil {
 						edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID, line: lineOf(node)})
@@ -373,7 +394,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 					switch m.Kind {
 					case MatchCallExpr:
 						ident, ok := sel.X.(*ast.Ident)
-						if !ok || !m.MatchesName(sel.Sel.Name) || !matchesPkg(ident.Name, m.PkgName) {
+						if !ok || !m.MatchesName(sel.Sel.Name) || !matchesMatcherPkg(m, ident.Name) {
 							return true
 						}
 					case MatchMethodCall:
@@ -403,12 +424,22 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 						return true
 					}
 					ident, ok := node.X.(*ast.Ident)
-					if !ok || !m.MatchesName(node.Sel.Name) || !matchesPkg(ident.Name, m.PkgName) {
+					if !ok || !m.MatchesName(node.Sel.Name) || !matchesMatcherPkg(m, ident.Name) {
 						return true
 					}
 					if r.Kind == kindMovedToExtension {
 						for _, e := range fixMoveToExtensionSelectorExpr(node, r, byteOffset) {
 							edits = append(edits, taggedEdit{Edit: e, ruleID: r.ID, line: lineOf(node)})
+						}
+						return true
+					}
+					if pointerDropRule(r) {
+						// Only a use site under a `*` needs editing; a value
+						// use of the same type is already correct.
+						if star, under := starOf[ast.Expr(node)]; under {
+							if e := fixPointerToValue(star, byteOffset); e != nil {
+								edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID, line: lineOf(node)})
+							}
 						}
 						return true
 					}

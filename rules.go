@@ -61,9 +61,13 @@ type ModuleRequirement struct {
 // The Old/New fields are populated from whichever version-specific YAML keys
 // are present (v2/v4 or v3/v4).
 type Rule struct {
-	ID              string   `yaml:"id"`
-	Kind            string   `yaml:"kind"`
-	Package         string   `yaml:"package"`
+	ID      string `yaml:"id"`
+	Kind    string `yaml:"kind"`
+	Package string `yaml:"package"`
+	// PackageImport names the import path that Package refers to, for a rule
+	// targeting a package outside jwx. Without it a matcher can only resolve
+	// local names against the file's jwx imports.
+	PackageImport   string   `yaml:"package_import,omitempty"`
 	Mechanical      bool     `yaml:"mechanical"`
 	V2              string   `yaml:"v2,omitempty"`
 	V3              string   `yaml:"v3,omitempty"`
