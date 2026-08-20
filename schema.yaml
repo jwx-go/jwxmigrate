@@ -5,7 +5,29 @@
 #
 # Each rule in the rules list follows this schema.
 
-schema_version: "2"
+schema_version: "3"
+
+# Top-level fields of a migration YAML file, outside the rules list.
+ruleset_fields:
+  schema_version:
+    required: true
+    type: string
+  from:
+    required: true
+    type: string
+    description: Module path being migrated away from.
+  to:
+    required: true
+    type: string
+    description: Module path being migrated to.
+  minimum_target_version:
+    required: true
+    type: string
+    description: >
+      The version of `to` written to a consumer's go.mod when no rule that
+      fired declares a higher floor. Rules needing newer API raise it through
+      their own `requires` block. Derive it by the procedure in
+      agents/docs/version-floors.md; never set it to "latest".
 
 rule_fields:
   id:
@@ -121,3 +143,27 @@ rule_fields:
       after:
         type: string
         description: Equivalent v4 code snippet.
+
+  requires:
+    required: false
+    type: object
+    description: >
+      Preconditions this rule's guidance depends on. Omit when the rule set's
+      minimum_target_version is enough. Derive every value by the procedure in
+      agents/docs/version-floors.md; these are lookups against the target
+      module's history, never guesses.
+    fields:
+      go:
+        type: string
+        description: >
+          Minimum go.mod `go` directive value, e.g. "1.27". The rule is
+          suppressed entirely on projects below it, because its guidance
+          cannot be acted on there. Not a toolchain patch version.
+      modules:
+        type: list
+        description: >
+          Module versions the rule's guidance needs in order to compile. Each
+          entry has `path` and `version`. The version's major must match the
+          path's major suffix. On a `check` run an unsatisfied entry is
+          reported and the process exits 1; `--fix` raises the require.
+
