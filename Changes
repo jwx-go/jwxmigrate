@@ -1,6 +1,29 @@
 Changes
 =======
 
+v4.1.0 21 August 2026
+  * Fix `--fix` pinning `go.mod` to a jwx version too old for the advice it
+    gives. It wrote v4.0.0 while `jwk-parse-retains-unsupported-keys` told
+    you to call `jwk.WithStrictKeySetParsing` and `jwk.IsUnsupportedKey`,
+    which first shipped in v4.2.0, so the result did not compile. The version
+    written is now the highest any rule that actually fired requires.
+  * Report when `go.mod` is older than a reported rule needs, even where
+    nothing else is left to migrate. These findings name the module, the
+    version required, and the version you have, and exit 1 like any other
+    remaining item. `--fix` raises the requirement for you.
+  * Add ML-DSA rules for Go 1.27. A project whose `go.mod` declares go 1.27
+    or later, using jwx v4.4.0 or later, no longer needs
+    `github.com/jwx-go/mldsa/v4`: `--fix` drops that import and its
+    requirement, moves `MLDSA44`/`MLDSA65`/`MLDSA87` calls to `jwa`, and
+    swaps `filippo.io/mldsa` for `crypto/mldsa`. Below go 1.27 the rules stay
+    silent, because none of it can be done there.
+  * An import is never deleted while something still references it that
+    cannot be rewritten, so `--fix` does not turn a building project into a
+    broken one.
+  * Rule schema version 3. Rules may declare `requires` (a `go` directive
+    floor and module version floors), `package_import`, and `absorbed_into`;
+    rule sets declare `minimum_target_version`. Existing rules are unaffected.
+
 v4.0.4 24 July 2026
   * Add `jwk-parse-retains-unsupported-keys`, which reports v3 `jwk.Parse`
     calls whose JWK Set behavior changes in v4. v3 fails when an entry cannot
