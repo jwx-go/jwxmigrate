@@ -2048,11 +2048,17 @@ rules:
 
   - id: mldsa-extension-absorbed
     kind: extension_absorbed
-    package: jws
     mechanical: true
     v3: "github.com/jwx-go/mldsa/v4 (side-effect import)"
     v4: "native ML-DSA in jwx"
     extension_module: "github.com/jwx-go/mldsa/v4"
+    absorbed_into: "github.com/lestrrat-go/jwx/v4/jwa"
+    package: mldsa
+    package_import: "github.com/jwx-go/mldsa/v4"
+    search_patterns:
+      - '\bMLDSA44\('
+      - '\bMLDSA65\('
+      - '\bMLDSA87\('
     requires:
       go: "1.27"
       modules:

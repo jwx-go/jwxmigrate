@@ -67,21 +67,25 @@ type Rule struct {
 	// PackageImport names the import path that Package refers to, for a rule
 	// targeting a package outside jwx. Without it a matcher can only resolve
 	// local names against the file's jwx imports.
-	PackageImport   string   `yaml:"package_import,omitempty"`
-	Mechanical      bool     `yaml:"mechanical"`
-	V2              string   `yaml:"v2,omitempty"`
-	V3              string   `yaml:"v3,omitempty"`
-	V4              string   `yaml:"v4,omitempty"`
-	V2Signature     string   `yaml:"v2_signature,omitempty"`
-	V3Signature     string   `yaml:"v3_signature,omitempty"`
-	V4Signature     string   `yaml:"v4_signature,omitempty"`
-	Replacement     string   `yaml:"replacement,omitempty"`
-	ExtensionModule string   `yaml:"extension_module,omitempty"`
-	SearchPatterns  []string `yaml:"search_patterns,omitempty"`
-	CompilerHints   []string `yaml:"compiler_hints,omitempty"`
-	FilePatterns    []string `yaml:"file_patterns,omitempty"`
-	Note            string   `yaml:"note"`
-	Example         *Example `yaml:"example,omitempty"`
+	PackageImport   string `yaml:"package_import,omitempty"`
+	Mechanical      bool   `yaml:"mechanical"`
+	V2              string `yaml:"v2,omitempty"`
+	V3              string `yaml:"v3,omitempty"`
+	V4              string `yaml:"v4,omitempty"`
+	V2Signature     string `yaml:"v2_signature,omitempty"`
+	V3Signature     string `yaml:"v3_signature,omitempty"`
+	V4Signature     string `yaml:"v4_signature,omitempty"`
+	Replacement     string `yaml:"replacement,omitempty"`
+	ExtensionModule string `yaml:"extension_module,omitempty"`
+	// AbsorbedInto is the import path that now provides what
+	// ExtensionModule used to, for an extension_absorbed rule whose symbols
+	// move rather than simply disappear.
+	AbsorbedInto   string   `yaml:"absorbed_into,omitempty"`
+	SearchPatterns []string `yaml:"search_patterns,omitempty"`
+	CompilerHints  []string `yaml:"compiler_hints,omitempty"`
+	FilePatterns   []string `yaml:"file_patterns,omitempty"`
+	Note           string   `yaml:"note"`
+	Example        *Example `yaml:"example,omitempty"`
 
 	// Requires holds the rule's preconditions. See agents/docs/version-floors.md
 	// for how to derive the values; they are a lookup against the target

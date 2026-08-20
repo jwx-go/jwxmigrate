@@ -120,17 +120,28 @@ const namedExtensionConsumer = `package consumer
 
 import (
 	jwxmldsa "github.com/jwx-go/mldsa/v4"
-	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jws"
 )
 
-func alg() jwa.SignatureAlgorithm {
-	return jwxmldsa.MLDSA65()
+func sign(payload []byte, key any) ([]byte, error) {
+	return jws.Sign(payload, jws.WithKey(jwxmldsa.MLDSA65(), key))
 }
 `
 
-func TestExtensionImportKeptWhenStillReferenced(t *testing.T) {
-	// Deleting this import would leave jwxmldsa undefined. Reporting without
-	// fixing is the only safe outcome, so `--fix` never breaks a build.
+// unknownSymbolConsumer calls a symbol the rule does not know how to move.
+// InteropMode has no home in jwa, so nothing can be rewritten here.
+const unknownSymbolConsumer = `package consumer
+
+import jwxmldsa "github.com/jwx-go/mldsa/v4"
+
+func interop() bool {
+	return jwxmldsa.InteropMode()
+}
+`
+
+func fixMLDSAModule(t *testing.T, source string) (string, string) {
+	t.Helper()
+
 	prev := runGoModTidy
 	runGoModTidy = func(string, io.Writer, io.Writer) error { return nil }
 	t.Cleanup(func() { runGoModTidy = prev })
@@ -142,17 +153,7 @@ func TestExtensionImportKeptWhenStillReferenced(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, goModFilename), []byte(
 		"module example.com/consumer\n\ngo 1.27\n\nrequire (\n\tgithub.com/jwx-go/mldsa/v4 v4.0.5\n\tgithub.com/lestrrat-go/jwx/v4 v4.4.0\n)\n",
 	), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte(namedExtensionConsumer), 0o644))
-
-	result, err := Check(dir, rules, CheckOptions{})
-	require.NoError(t, err)
-	reported := false
-	for _, f := range result.Findings {
-		if f.RuleID == "mldsa-extension-absorbed" {
-			reported = true
-		}
-	}
-	require.True(t, reported, "the import should still be reported")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0o644))
 
 	files, err := findFixableFiles(dir, io.Discard)
 	require.NoError(t, err)
@@ -160,8 +161,34 @@ func TestExtensionImportKeptWhenStillReferenced(t *testing.T) {
 
 	src, err := os.ReadFile(filepath.Join(dir, "main.go"))
 	require.NoError(t, err)
-	require.Contains(t, string(src), "jwxmldsa \"github.com/jwx-go/mldsa/v4\"",
-		"a referenced import must survive --fix")
+	gomod, err := os.ReadFile(filepath.Join(dir, goModFilename))
+	require.NoError(t, err)
+	return string(src), string(gomod)
+}
+
+func TestNamedExtensionImportIsRewritten(t *testing.T) {
+	// Every usage moves to jwa, so the import can go with them. Verified
+	// against the real jwx-go/examples file this mirrors, which compiles and
+	// passes on Go 1.27 after the same rewrite.
+	got, gomod := fixMLDSAModule(t, namedExtensionConsumer)
+
+	require.NotContains(t, got, "jwx-go/mldsa", "the extension import should be gone")
+	require.NotContains(t, got, "jwxmldsa.", "no usage may reference the dropped import")
+	require.Contains(t, got, "jwa.MLDSA65()", "the call should move to jwa")
+	require.Contains(t, got, `"github.com/lestrrat-go/jwx/v4/jwa"`, "jwa must be imported")
+	require.NotContains(t, gomod, "github.com/jwx-go/mldsa/v4", "the require should be dropped")
+}
+
+func TestUnknownExtensionSymbolBlocksRemoval(t *testing.T) {
+	// Deleting the import would leave jwxmldsa.InteropMode undefined. The
+	// rule still reports; it just must not apply.
+	got, gomod := fixMLDSAModule(t, unknownSymbolConsumer)
+
+	require.Contains(t, got, `jwxmldsa "github.com/jwx-go/mldsa/v4"`,
+		"an import with an unmovable usage must survive --fix")
+	require.Contains(t, got, "jwxmldsa.InteropMode()")
+	require.Contains(t, gomod, "github.com/jwx-go/mldsa/v4",
+		"the require must stay while the import does")
 }
 
 func TestStdlibTargetIsNeverRequired(t *testing.T) {

@@ -103,10 +103,23 @@ func deriveExtensionAbsorbed(r *Rule) []ASTMatcher {
 	if r.ExtensionModule == "" {
 		return nil
 	}
-	return []ASTMatcher{{
+	matchers := []ASTMatcher{{
 		Kind:       MatchImportSpec,
 		ImportPath: r.ExtensionModule,
 	}}
+
+	// When the extension is imported under a name and its symbols are called,
+	// deleting the import alone would leave them undefined. Match those calls
+	// too so they can be re-qualified against absorbed_into.
+	if r.AbsorbedInto != "" {
+		for _, name := range extractNamesFromPatterns(r) {
+			matchers = append(matchers,
+				ASTMatcher{Kind: MatchCallExpr, PkgName: r.Package, Name: name, ImportPath: r.ExtensionModule},
+				ASTMatcher{Kind: MatchSelectorExpr, PkgName: r.Package, Name: name, ImportPath: r.ExtensionModule},
+			)
+		}
+	}
+	return matchers
 }
 
 func deriveSignatureChange(r *Rule) []ASTMatcher {

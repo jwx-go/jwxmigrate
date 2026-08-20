@@ -368,7 +368,20 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 						return true
 					}
 					if r.Kind == kindExtensionAbsorbed {
-						if e := fixImportRemoval(pf, node, byteOffset); e != nil {
+						// Re-qualify every usage and drop the import from the
+						// same set of nodes, so the removal can never outrun
+						// the rewrites that make it safe.
+						refs := absorbedReferences(pf, r)
+						for n := range refs {
+							sel, isSel := n.(*ast.SelectorExpr)
+							if !isSel {
+								continue
+							}
+							if e := fixAbsorbedSelector(sel, r, byteOffset); e != nil {
+								edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID, line: lineOf(sel)})
+							}
+						}
+						if e := fixImportRemoval(pf, node, byteOffset, refs); e != nil {
 							edits = append(edits, taggedEdit{Edit: *e, ruleID: r.ID, line: lineOf(node)})
 						}
 						return true
@@ -475,6 +488,7 @@ func collectEdits(pf *ParsedGoFile, rules []CompiledRule) []taggedEdit {
 
 	edits = ensureOsImport(pf, edits, byteOffset)
 	edits = ensureExtensionImports(pf, edits, rules, byteOffset)
+	edits = ensureAbsorbedImports(pf, edits, rules, byteOffset)
 	edits = ensureJWXImports(pf, edits, pendingJWXImports, byteOffset)
 	return deduplicateEdits(edits)
 }

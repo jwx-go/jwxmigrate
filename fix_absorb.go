@@ -24,14 +24,17 @@ import (
 //
 // Returns nil when the line cannot be bounded, which keeps a malformed file
 // from producing a corrupting edit.
-func fixImportRemoval(pf *ParsedGoFile, node *ast.ImportSpec, byteOffset func(token.Pos) int) *Edit {
-	// Refuse when the file still refers to the package. Deleting the import
-	// would leave undefined references behind, which is worse than leaving
-	// the migration to a human: the rule is still reported, just not applied.
-	// A blank import binds no name and is always safe to drop.
+// rewritten lists selector nodes that are being re-qualified in the same
+// pass, which therefore do not keep the import alive.
+func fixImportRemoval(pf *ParsedGoFile, node *ast.ImportSpec, byteOffset func(token.Pos) int, rewritten map[ast.Node]struct{}) *Edit {
+	// Refuse when the file still refers to the package through something this
+	// pass is not rewriting. Deleting the import would leave undefined
+	// references behind, which is worse than leaving the migration to a
+	// human: the rule is still reported, just not applied. A blank import
+	// binds no name and is always safe to drop.
 	if node.Name == nil || node.Name.Name != "_" {
 		local := importLocalName(node)
-		if local != "" && packageIsReferenced(pf.ASTFile, local) {
+		if local != "" && packageIsReferenced(pf.ASTFile, local, rewritten) {
 			return nil
 		}
 	}
@@ -158,7 +161,7 @@ func importLocalName(node *ast.ImportSpec) string {
 
 // packageIsReferenced reports whether any `local.Something` selector appears
 // in the file. Import specs are skipped, since the import itself is not a use.
-func packageIsReferenced(f *ast.File, local string) bool {
+func packageIsReferenced(f *ast.File, local string, rewritten map[ast.Node]struct{}) bool {
 	found := false
 	ast.Inspect(f, func(n ast.Node) bool {
 		if n == nil || found {
@@ -172,8 +175,10 @@ func packageIsReferenced(f *ast.File, local string) bool {
 			return true
 		}
 		if ident, ok := sel.X.(*ast.Ident); ok && ident.Name == local {
-			found = true
-			return false
+			if _, beingFixed := rewritten[n]; !beingFixed {
+				found = true
+				return false
+			}
 		}
 		return true
 	})
@@ -186,4 +191,126 @@ func packageIsReferenced(f *ast.File, local string) bool {
 func isStdlibImportPath(path string) bool {
 	first, _, _ := strings.Cut(path, "/")
 	return !strings.Contains(first, ".")
+}
+
+// fixAbsorbedSelector re-qualifies `ext.Sym` to `core.Sym`, where core is the
+// package named by the rule's absorbed_into path. The symbol name is kept:
+// a feature that moved into the core module keeps its name, and a rule that
+// needs a rename can say so with a separate rename rule.
+func fixAbsorbedSelector(node *ast.SelectorExpr, r *CompiledRule, byteOffset func(token.Pos) int) *Edit {
+	if r.Kind != kindExtensionAbsorbed || r.AbsorbedInto == "" {
+		return nil
+	}
+	xIdent, ok := node.X.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	newPkg := goPkgName(r.AbsorbedInto)
+	if newPkg == "" || newPkg == xIdent.Name {
+		return nil
+	}
+	return &Edit{Start: byteOffset(xIdent.Pos()), End: byteOffset(xIdent.End()), New: newPkg}
+}
+
+// absorbedReferences returns the selector nodes this rule will re-qualify, so
+// the import-removal guard does not count them as reasons to keep the import.
+// Without this the guard and the rewrite would deadlock: every usage is being
+// fixed, yet the import would still look "in use".
+func absorbedReferences(pf *ParsedGoFile, r *CompiledRule) map[ast.Node]struct{} {
+	out := map[ast.Node]struct{}{}
+	if r.Kind != kindExtensionAbsorbed || r.AbsorbedInto == "" {
+		return out
+	}
+	local, ok := localNameForImport(pf.ASTFile, r.ExtensionModule)
+	if !ok {
+		return out
+	}
+	names := map[string]struct{}{}
+	for i := range r.ASTMatchers {
+		if n := r.ASTMatchers[i].Name; n != "" {
+			names[n] = struct{}{}
+		}
+	}
+	ast.Inspect(pf.ASTFile, func(n ast.Node) bool {
+		if n == nil {
+			return false
+		}
+		sel, isSel := n.(*ast.SelectorExpr)
+		if !isSel {
+			return true
+		}
+		ident, isIdent := sel.X.(*ast.Ident)
+		if !isIdent || ident.Name != local {
+			return true
+		}
+		if _, wanted := names[sel.Sel.Name]; wanted {
+			out[sel] = struct{}{}
+		}
+		return true
+	})
+	return out
+}
+
+// ensureAbsorbedImports adds the absorbed_into import for any rule that
+// re-qualified a symbol in this file, mirroring ensureExtensionImports.
+func ensureAbsorbedImports(pf *ParsedGoFile, edits []taggedEdit, rules []CompiledRule, byteOffset func(token.Pos) int) []taggedEdit {
+	if len(edits) == 0 {
+		return edits
+	}
+	byID := make(map[string]*CompiledRule, len(rules))
+	for i := range rules {
+		byID[rules[i].ID] = &rules[i]
+	}
+	seen := map[string]struct{}{}
+	for _, e := range edits {
+		r, ok := byID[e.ruleID]
+		if !ok || r.Kind != kindExtensionAbsorbed || r.AbsorbedInto == "" {
+			continue
+		}
+		if _, dup := seen[r.AbsorbedInto]; dup {
+			continue
+		}
+		seen[r.AbsorbedInto] = struct{}{}
+		if importedAs(pf, r.AbsorbedInto) {
+			continue
+		}
+		edits = appendImportEditAt(pf, edits, byteOffset, r.AbsorbedInto, e.ruleID, insertAnchor(pf, edits, byteOffset))
+	}
+	return edits
+}
+
+// insertAnchor picks the byte offset to insert a new import at: the first
+// import spec that no pending edit deletes.
+//
+// appendImportEdit anchors on the first import unconditionally, which
+// collides when that very import is the one being removed. The insert and the
+// delete then overlap and corrupt the line.
+func insertAnchor(pf *ParsedGoFile, edits []taggedEdit, byteOffset func(token.Pos) int) int {
+	deleted := func(pos int) bool {
+		for _, e := range edits {
+			if e.New == "" && pos >= e.Start && pos < e.End {
+				return true
+			}
+		}
+		return false
+	}
+	for _, imp := range pf.ASTFile.Imports {
+		pos := byteOffset(imp.Pos())
+		if !deleted(pos) {
+			return pos
+		}
+	}
+	return -1
+}
+
+// appendImportEditAt inserts `"path"` at the given offset. A negative offset
+// means no safe anchor exists, and the edit is skipped rather than guessed at.
+func appendImportEditAt(pf *ParsedGoFile, edits []taggedEdit, _ func(token.Pos) int, importPath, ruleID string, at int) []taggedEdit {
+	if at < 0 || len(pf.ASTFile.Imports) == 0 {
+		return edits
+	}
+	return append(edits, taggedEdit{
+		Edit:   Edit{Start: at, End: at, New: "\"" + importPath + "\"\n\t"},
+		ruleID: ruleID,
+	})
 }

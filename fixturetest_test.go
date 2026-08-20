@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/txtar"
 	"gopkg.in/yaml.v3"
 )
@@ -300,6 +301,10 @@ func runFixture(t *testing.T, fixtureDir string) {
 
 	// Apply fixes to every .go file in the work dir.
 	inputFiles := listGoFiles(t, workDir)
+	parsedBefore := make(map[string]bool, len(inputFiles))
+	for _, f := range inputFiles {
+		parsedBefore[f] = parses(t, f)
+	}
 	for _, f := range inputFiles {
 		_, fixErr := FixFile(f, rules)
 		require.NoError(t, fixErr, "FixFile %s", f)
@@ -308,8 +313,9 @@ func runFixture(t *testing.T, fixtureDir string) {
 	// gofmt round-trip: each fixed file must equal its own format.Source.
 	// FixFile already calls format.Source, so this is a consistency check.
 	for _, f := range inputFiles {
-		assertGofmtStable(t, f)
+		assertGofmtStable(t, f, parsedBefore[f])
 	}
+	assertGoModParses(t, workDir)
 
 	// Idempotency: running fix a second time must not change any file.
 	for _, f := range inputFiles {
@@ -454,14 +460,42 @@ func mustReadFile(t *testing.T, p string) []byte {
 
 // assertGofmtStable verifies that the file is already gofmt-stable: running
 // format.Source on its contents yields the same bytes.
-func assertGofmtStable(t *testing.T, path string) {
+//
+// A file that does not parse is reported rather than skipped when it parsed
+// before the fix ran. Silently returning there is what let a fixer emit
+// unparseable Go and still go green: the harness never compiles anything, so
+// this is the only place that catches it.
+func assertGofmtStable(t *testing.T, path string, parsedBefore bool) {
 	t.Helper()
 	src := mustReadFile(t, path)
 	formatted, err := format.Source(src)
 	if err != nil {
-		return // not valid Go; not the harness's concern
+		require.False(t, parsedBefore,
+			"file %s parsed before the fix and does not parse after it: %s", path, err)
+		return // was already invalid going in; not the harness's concern
 	}
 	require.Equal(t, string(formatted), string(src), "file %s is not gofmt-stable after fix", path)
+}
+
+// parses reports whether a file on disk is syntactically valid Go.
+func parses(t *testing.T, path string) bool {
+	t.Helper()
+	_, err := format.Source(mustReadFile(t, path))
+	return err == nil
+}
+
+// assertGoModParses fails when a go.mod in dir no longer parses. A rewrite
+// that emits a versionless require produces a file the go command rejects
+// outright, which no Go-file check would notice.
+func assertGoModParses(t *testing.T, dir string) {
+	t.Helper()
+	path := filepath.Join(dir, goModFilename)
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return // fixture has no go.mod
+	}
+	_, err = modfile.Parse(path, src, nil)
+	require.NoError(t, err, "go.mod is unparseable after fix")
 }
 
 // TestRulesFixtures walks testdata/rules/{v2,v3}/* and runs each fixture.

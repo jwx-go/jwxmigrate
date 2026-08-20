@@ -55,7 +55,10 @@ rule_fields:
         lives in the core module or the standard library, so `--fix` deletes
         the extension's import (usually a blank one kept for its registration
         side effect) and drops its `require` from go.mod. Name the module in
-        `extension_module`.
+        `extension_module`. When the extension's symbols move rather than
+        disappear, add `absorbed_into` and `search_patterns`: usages are
+        re-qualified against that package and the import is only removed once
+        nothing unhandled still references it.
       build_change: Build tag, Go version, or build environment change.
 
   package:
@@ -94,6 +97,15 @@ rule_fields:
     required: false
     type: string
     description: For moved_to_extension rules, the full Go module path of the extension.
+
+  absorbed_into:
+    required: false
+    type: string
+    description: >
+      For extension_absorbed rules, the import path that now provides what the
+      extension did (e.g. "github.com/lestrrat-go/jwx/v4/jwa"). Usages named by
+      `search_patterns` are re-qualified to it and the import is added. Omit
+      when the extension is only ever imported for its side effect.
 
   package_import:
     required: false
