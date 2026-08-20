@@ -1,0 +1,42 @@
+-- input/go.mod --
+module example.com/consumer
+
+go 1.27
+
+require (
+	filippo.io/mldsa v0.0.0-20260215214346-43d0283efc3e
+	github.com/lestrrat-go/jwx/v4 v4.4.0
+)
+-- input/main.go --
+package consumer
+
+import (
+	"filippo.io/mldsa"
+
+	"github.com/lestrrat-go/jwx/v4/jwa"
+)
+
+func params() *mldsa.Parameters {
+	var p *mldsa.Parameters = mldsa.MLDSA65()
+	_ = jwa.RS256()
+	return p
+}
+-- want_check.txt --
+main.go:9: [mldsa-parameters-value-type] (mechanical) mldsa.Parameters
+main.go:10: [mldsa-parameters-value-type] (mechanical) mldsa.Parameters
+
+total=2 mechanical=2 manual=0
+-- want_fix/main.go --
+package consumer
+
+import (
+	"crypto/mldsa"
+
+	"github.com/lestrrat-go/jwx/v4/jwa"
+)
+
+func params() mldsa.Parameters {
+	var p mldsa.Parameters = mldsa.MLDSA65()
+	_ = jwa.RS256()
+	return p
+}

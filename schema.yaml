@@ -50,6 +50,12 @@ rule_fields:
       behavioral: Same API surface, different runtime behavior or requirements.
       type_change: Type or interface definition changed.
       moved_to_extension: Feature moved from core to an extension module under github.com/jwx-go/.
+      extension_absorbed: >
+        Inverse of moved_to_extension. The extension module's feature now
+        lives in the core module or the standard library, so `--fix` deletes
+        the extension's import (usually a blank one kept for its registration
+        side effect) and drops its `require` from go.mod. Name the module in
+        `extension_module`.
       build_change: Build tag, Go version, or build environment change.
 
   package:
@@ -88,6 +94,15 @@ rule_fields:
     required: false
     type: string
     description: For moved_to_extension rules, the full Go module path of the extension.
+
+  package_import:
+    required: false
+    type: string
+    description: >
+      Import path that `package` names, for a rule targeting a package outside
+      jwx (e.g. package "mldsa" meaning "filippo.io/mldsa"). Without it a
+      matcher resolves local names only against the file's jwx imports and
+      will never fire. Only needed when `package` is not a jwx package.
 
   mechanical:
     required: true

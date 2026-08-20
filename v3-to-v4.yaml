@@ -2036,3 +2036,87 @@ rules:
             v := option.MustGet[int](opt)
             _ = v
         }
+
+  # ============================================================
+  # ML-DSA on Go 1.27
+  # ============================================================
+  #
+  # These three rules only apply to a project whose go.mod declares go 1.27 or
+  # later. Below that, crypto/mldsa does not exist, jwx registers no ML-DSA,
+  # and the extension module is still the only way to get it — so `requires.go`
+  # suppresses them rather than offering advice that cannot be taken.
+
+  - id: mldsa-extension-absorbed
+    kind: extension_absorbed
+    package: jws
+    mechanical: true
+    v3: "github.com/jwx-go/mldsa/v4 (side-effect import)"
+    v4: "native ML-DSA in jwx"
+    extension_module: "github.com/jwx-go/mldsa/v4"
+    requires:
+      go: "1.27"
+      modules:
+        - path: "github.com/lestrrat-go/jwx/v4"
+          version: "v4.4.0"
+    note: >
+      From jwx v4.4.0 on, a build using Go 1.27 registers ML-DSA itself,
+      because crypto/mldsa is in the standard library at that version.
+      jwa.MLDSA44(), jwa.MLDSA65() and jwa.MLDSA87() are available with no
+      extension module and no side-effect import, so this import can be
+      deleted. Leaving it in place is harmless from jwx-go/mldsa v4.0.5 on,
+      which detects the native registration and bridges to it; earlier
+      versions panic at import instead.
+    example:
+      before: |
+        import _ "github.com/jwx-go/mldsa/v4"
+      after: |
+        // no import needed; jwx registers ML-DSA natively on Go 1.27
+
+  - id: mldsa-key-package-to-stdlib
+    kind: import_change
+    package: all
+    mechanical: true
+    v3: "filippo.io/mldsa"
+    v4: "crypto/mldsa"
+    requires:
+      go: "1.27"
+      modules:
+        - path: "github.com/lestrrat-go/jwx/v4"
+          version: "v4.4.0"
+    note: >
+      crypto/mldsa is the standard library home of the API filippo.io/mldsa
+      provided, and jwx's native ML-DSA accepts crypto/mldsa keys. The two
+      packages expose the same functions and the same package name, so the
+      import path is the only thing that changes at most call sites. See
+      mldsa-parameters-value-type for the one exception.
+    example:
+      before: |
+        import "filippo.io/mldsa"
+      after: |
+        import "crypto/mldsa"
+
+  - id: mldsa-parameters-value-type
+    kind: type_change
+    package: mldsa
+    package_import: "filippo.io/mldsa"
+    mechanical: true
+    v3: "*mldsa.Parameters"
+    v4: "mldsa.Parameters"
+    search_patterns:
+      - '\*mldsa\.Parameters'
+    requires:
+      go: "1.27"
+      modules:
+        - path: "github.com/lestrrat-go/jwx/v4"
+          version: "v4.4.0"
+    note: >
+      Parameters is a pointer in filippo.io/mldsa and a value in crypto/mldsa.
+      MLDSA44(), MLDSA65() and MLDSA87() return it by value, and GenerateKey,
+      NewPrivateKey and NewPublicKey take it by value. Code that passes the
+      result straight through needs no change; only a site that names the type
+      does.
+    example:
+      before: |
+        var params *mldsa.Parameters = mldsa.MLDSA44()
+      after: |
+        var params mldsa.Parameters = mldsa.MLDSA44()

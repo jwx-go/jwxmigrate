@@ -34,14 +34,15 @@ func TestLoadRules(t *testing.T) {
 
 func TestRuleKinds(t *testing.T) {
 	validKinds := map[string]struct{}{
-		kindImportChange:     {},
-		kindSignatureChange:  {},
-		kindRename:           {},
-		kindRemoved:          {},
-		kindBehavioral:       {},
-		kindTypeChange:       {},
-		kindMovedToExtension: {},
-		kindBuildChange:      {},
+		kindImportChange:      {},
+		kindSignatureChange:   {},
+		kindRename:            {},
+		kindRemoved:           {},
+		kindBehavioral:        {},
+		kindTypeChange:        {},
+		kindMovedToExtension:  {},
+		kindBuildChange:       {},
+		kindExtensionAbsorbed: {},
 	}
 
 	for _, migration := range []string{migrationV3ToV4, migrationV2ToV4} {
