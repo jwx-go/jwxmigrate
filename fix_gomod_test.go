@@ -34,7 +34,7 @@ func TestFixBuildFileRewritesJwxV3RequireToV4(t *testing.T) {
 	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
-	result, err := FixBuildFile(gomodPath, rules)
+	result, err := FixBuildFile(gomodPath, rules, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Contains(t, result.Applied, importRuleID)
@@ -42,7 +42,7 @@ func TestFixBuildFileRewritesJwxV3RequireToV4(t *testing.T) {
 	got, err := os.ReadFile(gomodPath)
 	require.NoError(t, err)
 	gotStr := string(got)
-	require.Contains(t, gotStr, "github.com/lestrrat-go/jwx/v4 "+latestV4Version)
+	require.Contains(t, gotStr, "github.com/lestrrat-go/jwx/v4 "+targetMinimumVersion)
 	require.NotContains(t, gotStr, "github.com/lestrrat-go/jwx/v3")
 }
 
@@ -56,7 +56,7 @@ func TestFixBuildFileSkipsGoModWithoutJwxV3(t *testing.T) {
 	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
-	result, err := FixBuildFile(gomodPath, rules)
+	result, err := FixBuildFile(gomodPath, rules, nil)
 	require.NoError(t, err)
 	require.Nil(t, result)
 }
@@ -76,7 +76,7 @@ func TestFixBuildFileIdempotentOnJwxV4(t *testing.T) {
 	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
-	result, err := FixBuildFile(gomodPath, rules)
+	result, err := FixBuildFile(gomodPath, rules, nil)
 	require.NoError(t, err)
 	require.Nil(t, result, "no v3 require entries means no fixes to apply")
 
@@ -96,7 +96,7 @@ func TestFixBuildFileRewritesJwxV3RequireBlock(t *testing.T) {
 	rules, err := loadRules(migrationV3ToV4)
 	require.NoError(t, err)
 
-	result, err := FixBuildFile(gomodPath, rules)
+	result, err := FixBuildFile(gomodPath, rules, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Contains(t, result.Applied, importRuleID)
@@ -104,7 +104,7 @@ func TestFixBuildFileRewritesJwxV3RequireBlock(t *testing.T) {
 	got, err := os.ReadFile(gomodPath)
 	require.NoError(t, err)
 	gotStr := string(got)
-	require.Contains(t, gotStr, "github.com/lestrrat-go/jwx/v4 "+latestV4Version)
+	require.Contains(t, gotStr, "github.com/lestrrat-go/jwx/v4 "+targetMinimumVersion)
 	require.NotContains(t, gotStr, "github.com/lestrrat-go/jwx/v3")
 	require.Contains(t, gotStr, "github.com/other/lib v1.0.0")
 }

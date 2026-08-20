@@ -70,29 +70,33 @@ func appendGOEXPERIMENT(env []string, exp string) []string {
 // build-file dispatcher and the fixable-file walker.
 const goModFilename = "go.mod"
 
-// latestV4Version is the jwx/v4 module version that go.mod rewrites pin to.
-// Bump on every jwxmigrate release that needs to track a newer v4 minimum.
-// fixFiles runs `go mod tidy` after the rewrite, which floats the version
-// to whatever the toolchain selects, so this only needs to be a valid
-// version that go can resolve, not necessarily the absolute latest.
-const latestV4Version = "v4.0.0"
-
 // FixBuildFile applies mechanical fixes to a non-Go build file (currently
 // only go.mod). Returns nil if the file is not a recognized build target
 // or has no applicable changes — callers treat nil like FixFile does.
-func FixBuildFile(filePath string, rules []CompiledRule) (*FixResult, error) {
+// fired is the subset of rules that matched in this file's module during the
+// same batch. Pass nil when that is not known; version floors then fall back
+// to the rule set baseline.
+func FixBuildFile(filePath string, rules, fired []CompiledRule) (*FixResult, error) {
 	switch filepath.Base(filePath) {
 	case goModFilename:
-		return fixGoMod(filePath, rules)
+		return fixGoMod(filePath, rules, fired)
 	}
 	return nil, nil //nolint:nilnil
 }
 
-// fixGoMod rewrites jwx require entries from the migration's source path
-// to its target path, pinned at latestV4Version. Other modules are left
-// untouched; downstream `go mod tidy` is responsible for resolving
-// transitive deps and version selection.
-func fixGoMod(filePath string, rules []CompiledRule) (*FixResult, error) {
+// fixGoMod brings a consumer's go.mod in line with the rules that fired in
+// that module: it swaps the migration source path for the target path, raises
+// any require that sits below a fired rule's declared floor, and adds
+// companion modules those rules point at.
+//
+// `fired` is the subset of `rules` that actually matched in this module.
+// Versions are resolved from it rather than from the whole rule set, so a
+// consumer is never dragged up to the newest version some unrelated rule
+// happens to mention.
+//
+// Modules no rule mentions are left untouched; downstream `go mod tidy`
+// resolves transitive deps.
+func fixGoMod(filePath string, rules, fired []CompiledRule) (*FixResult, error) {
 	src, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", filePath, err)
@@ -103,25 +107,47 @@ func fixGoMod(filePath string, rules []CompiledRule) (*FixResult, error) {
 		return nil, fmt.Errorf("parsing %s: %w", filePath, err)
 	}
 
-	rewrites := importRewriteRules(rules)
-	if len(rewrites) == 0 {
-		return nil, nil //nolint:nilnil
-	}
-
 	applied := make(map[string]struct{})
+
+	// 1. Swap the migration source path for the target path, at the version
+	//    the rules that fired actually need.
 	for _, req := range mf.Require {
-		for _, rw := range rewrites {
+		for _, rw := range importRewriteRules(rules) {
 			if req.Mod.Path != rw.from {
 				continue
 			}
 			if err := mf.DropRequire(req.Mod.Path); err != nil {
 				return nil, fmt.Errorf("dropping %s from %s: %w", req.Mod.Path, filePath, err)
 			}
-			if err := mf.AddRequire(rw.to, latestV4Version); err != nil {
+			if err := mf.AddRequire(rw.to, requiredVersionFor(rw.to, fired)); err != nil {
 				return nil, fmt.Errorf("adding %s to %s: %w", rw.to, filePath, err)
 			}
 			applied[rw.ruleID] = struct{}{}
 		}
+	}
+
+	// 2. Raise any require already present that sits below what a fired rule
+	//    needs. A project that finished the path swap on an earlier run, or
+	//    that was always on the target major, never reaches step 1 but can
+	//    still be too old for the guidance it is being given.
+	for _, u := range unmetFloors(fired, currentRequires(mf)) {
+		if err := mf.AddRequire(u.Path, u.Need); err != nil {
+			return nil, fmt.Errorf("raising %s in %s: %w", u.Path, filePath, err)
+		}
+		applied[u.RuleID] = struct{}{}
+	}
+
+	// 3. Add companion modules that fired moved_to_extension rules point at,
+	//    at the floor those rules declare. Without a declared floor there is
+	//    no version to write, so the requirement is left for `go mod tidy`.
+	for path, r := range companionRequirements(fired) {
+		if _, ok := currentRequires(mf)[path]; ok {
+			continue
+		}
+		if err := mf.AddRequire(path, r.version); err != nil {
+			return nil, fmt.Errorf("adding %s to %s: %w", path, filePath, err)
+		}
+		applied[r.ruleID] = struct{}{}
 	}
 
 	if len(applied) == 0 {
