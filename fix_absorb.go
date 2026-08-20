@@ -25,6 +25,17 @@ import (
 // Returns nil when the line cannot be bounded, which keeps a malformed file
 // from producing a corrupting edit.
 func fixImportRemoval(pf *ParsedGoFile, node *ast.ImportSpec, byteOffset func(token.Pos) int) *Edit {
+	// Refuse when the file still refers to the package. Deleting the import
+	// would leave undefined references behind, which is worse than leaving
+	// the migration to a human: the rule is still reported, just not applied.
+	// A blank import binds no name and is always safe to drop.
+	if node.Name == nil || node.Name.Name != "_" {
+		local := importLocalName(node)
+		if local != "" && packageIsReferenced(pf.ASTFile, local) {
+			return nil
+		}
+	}
+
 	start := byteOffset(node.Pos())
 	end := byteOffset(node.End())
 	if start < 0 || end < 0 || end > len(pf.Src) {
@@ -134,4 +145,45 @@ func localNameForImport(f *ast.File, importPath string) (string, bool) {
 		return goPkgName(importPath), true
 	}
 	return "", false
+}
+
+// importLocalName returns the name an import binds in its file: the explicit
+// alias when there is one, otherwise the package's own name.
+func importLocalName(node *ast.ImportSpec) string {
+	if node.Name != nil {
+		return node.Name.Name
+	}
+	return goPkgName(strings.Trim(node.Path.Value, `"`))
+}
+
+// packageIsReferenced reports whether any `local.Something` selector appears
+// in the file. Import specs are skipped, since the import itself is not a use.
+func packageIsReferenced(f *ast.File, local string) bool {
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		if n == nil || found {
+			return false
+		}
+		if _, isImport := n.(*ast.ImportSpec); isImport {
+			return false
+		}
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if ident, ok := sel.X.(*ast.Ident); ok && ident.Name == local {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// isStdlibImportPath reports whether an import path belongs to the standard
+// library. The module path of anything else contains a dot in its first
+// element, because it starts with a hostname.
+func isStdlibImportPath(path string) bool {
+	first, _, _ := strings.Cut(path, "/")
+	return !strings.Contains(first, ".")
 }

@@ -119,7 +119,13 @@ func fixGoMod(filePath string, rules, fired []CompiledRule) (*FixResult, error) 
 			if err := mf.DropRequire(req.Mod.Path); err != nil {
 				return nil, fmt.Errorf("dropping %s from %s: %w", req.Mod.Path, filePath, err)
 			}
-			if err := mf.AddRequire(rw.to, requiredVersionFor(rw.to, fired)); err != nil {
+			version := requiredVersionFor(rw.to, fired)
+			if version == "" {
+				// Nothing declares a version for this path. Adding a
+				// versionless require writes a go.mod that will not parse.
+				return nil, fmt.Errorf("rule %s rewrites %s to %s but no version is declared for it", rw.ruleID, rw.from, rw.to)
+			}
+			if err := mf.AddRequire(rw.to, version); err != nil {
 				return nil, fmt.Errorf("adding %s to %s: %w", rw.to, filePath, err)
 			}
 			applied[rw.ruleID] = struct{}{}
@@ -216,6 +222,12 @@ func importRewriteRules(rules []CompiledRule) []importRewrite {
 		from := r.FromVersion()
 		to := r.ToVersion()
 		if from == "" || to == "" {
+			continue
+		}
+		// A rewrite whose target is in the standard library has no module to
+		// require. Writing one produces a malformed go.mod, and `go mod tidy`
+		// drops the old requirement on its own once the import is gone.
+		if isStdlibImportPath(to) {
 			continue
 		}
 		out = append(out, importRewrite{ruleID: r.ID, from: from, to: to})

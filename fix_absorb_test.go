@@ -113,3 +113,75 @@ func TestMLDSAFixRewritesEverything(t *testing.T) {
 		"the absorbed extension should be dropped from go.mod")
 	require.True(t, tidied, "go mod tidy should run so filippo falls out too")
 }
+
+// namedExtensionConsumer imports the extension under a name and calls into
+// it, which is how real code that predates native ML-DSA is written.
+const namedExtensionConsumer = `package consumer
+
+import (
+	jwxmldsa "github.com/jwx-go/mldsa/v4"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+)
+
+func alg() jwa.SignatureAlgorithm {
+	return jwxmldsa.MLDSA65()
+}
+`
+
+func TestExtensionImportKeptWhenStillReferenced(t *testing.T) {
+	// Deleting this import would leave jwxmldsa undefined. Reporting without
+	// fixing is the only safe outcome, so `--fix` never breaks a build.
+	prev := runGoModTidy
+	runGoModTidy = func(string, io.Writer, io.Writer) error { return nil }
+	t.Cleanup(func() { runGoModTidy = prev })
+
+	rules, err := loadRules(migrationV3ToV4)
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, goModFilename), []byte(
+		"module example.com/consumer\n\ngo 1.27\n\nrequire (\n\tgithub.com/jwx-go/mldsa/v4 v4.0.5\n\tgithub.com/lestrrat-go/jwx/v4 v4.4.0\n)\n",
+	), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte(namedExtensionConsumer), 0o644))
+
+	result, err := Check(dir, rules, CheckOptions{})
+	require.NoError(t, err)
+	reported := false
+	for _, f := range result.Findings {
+		if f.RuleID == "mldsa-extension-absorbed" {
+			reported = true
+		}
+	}
+	require.True(t, reported, "the import should still be reported")
+
+	files, err := findFixableFiles(dir, io.Discard)
+	require.NoError(t, err)
+	fixFiles(files, rules, FixOptions{}, io.Discard, io.Discard)
+
+	src, err := os.ReadFile(filepath.Join(dir, "main.go"))
+	require.NoError(t, err)
+	require.Contains(t, string(src), "jwxmldsa \"github.com/jwx-go/mldsa/v4\"",
+		"a referenced import must survive --fix")
+}
+
+func TestStdlibTargetIsNeverRequired(t *testing.T) {
+	// crypto/mldsa is in the standard library. Writing it as a require
+	// produces a go.mod that will not parse at all.
+	rules := []CompiledRule{{
+		Rule: Rule{
+			ID:         "to-stdlib",
+			Kind:       kindImportChange,
+			Package:    packageAll,
+			Mechanical: true,
+			V3:         "filippo.io/mldsa",
+			V4:         "crypto/mldsa",
+		},
+	}}
+	require.Empty(t, importRewriteRules(rules),
+		"a stdlib target has no module to require")
+
+	require.True(t, isStdlibImportPath("crypto/mldsa"))
+	require.True(t, isStdlibImportPath("encoding/json/v2"))
+	require.False(t, isStdlibImportPath("github.com/jwx-go/mldsa/v4"))
+	require.False(t, isStdlibImportPath("filippo.io/mldsa"))
+}
