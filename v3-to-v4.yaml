@@ -5,9 +5,14 @@
 #
 # Source: github.com/lestrrat-go/jwx/v3 → github.com/lestrrat-go/jwx/v4
 
-schema_version: "2"
+schema_version: "3"
 from: "github.com/lestrrat-go/jwx/v3"
 to: "github.com/lestrrat-go/jwx/v4"
+
+# Version written to a consumer's go.mod for `to` when no rule that fired asks
+# for more. Rules needing newer API raise it through their own `requires`
+# block. See agents/docs/version-floors.md before changing this.
+minimum_target_version: "v4.0.0"
 
 rules:
 
@@ -424,6 +429,12 @@ rules:
     mechanical: false
     v3: "jwk.Parse(JWK Set) (fails when a keys entry cannot be parsed)"
     v4: "jwk.Parse(JWK Set) (retains an unparseable entry as jwk.UnsupportedKey)"
+    # jwk.UnsupportedKey, jwk.IsUnsupportedKey and jwk.WithStrictKeySetParsing
+    # all arrived in jwx 68683a11 and first shipped in v4.2.0.
+    requires:
+      modules:
+        - path: "github.com/lestrrat-go/jwx/v4"
+          version: "v4.2.0"
     search_patterns:
       - 'jwk\.Parse\('
     note: >

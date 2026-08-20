@@ -31,7 +31,30 @@ type RuleSet struct {
 	SchemaVersion string `yaml:"schema_version"`
 	From          string `yaml:"from"`
 	To            string `yaml:"to"`
-	Rules         []Rule `yaml:"rules"`
+	// MinimumTargetVersion is the version of To written to a consumer's
+	// go.mod when no rule that fired asks for more. Rules that need newer
+	// API raise it through their own Requires block.
+	MinimumTargetVersion string `yaml:"minimum_target_version"`
+	Rules                []Rule `yaml:"rules"`
+}
+
+// Requires expresses the preconditions a rule's guidance depends on. A nil
+// *Requires means the rule applies unconditionally and the rule set's
+// MinimumTargetVersion is enough for it.
+type Requires struct {
+	// Go is a `go` directive value such as "1.27". A rule carrying one is
+	// suppressed entirely on projects below it, because its guidance cannot
+	// be acted on there.
+	Go string `yaml:"go,omitempty" json:"go,omitempty"`
+	// Modules are the module versions the rule's guidance needs in order to
+	// compile.
+	Modules []ModuleRequirement `yaml:"modules,omitempty" json:"modules,omitempty"`
+}
+
+// ModuleRequirement is one module version floor.
+type ModuleRequirement struct {
+	Path    string `yaml:"path"    json:"path"`
+	Version string `yaml:"version" json:"version"`
 }
 
 // Rule is a single migration rule.
@@ -55,6 +78,11 @@ type Rule struct {
 	FilePatterns    []string `yaml:"file_patterns,omitempty"`
 	Note            string   `yaml:"note"`
 	Example         *Example `yaml:"example,omitempty"`
+
+	// Requires holds the rule's preconditions. See agents/docs/version-floors.md
+	// for how to derive the values; they are a lookup against the target
+	// module's history, never a guess.
+	Requires *Requires `yaml:"requires,omitempty"`
 }
 
 // FromVersion returns the source version identifier (v2 or v3 field, whichever is set).
@@ -92,7 +120,10 @@ type CompiledRule struct {
 	ASTMatchers []ASTMatcher
 }
 
-func loadRules(migration string) ([]CompiledRule, error) {
+// parseRuleSet unmarshals a migration's embedded YAML without compiling
+// patterns or touching package state. Validation tests use it to inspect
+// rules as authored.
+func parseRuleSet(migration string) (*RuleSet, error) {
 	data, ok := migrations[migration]
 	if !ok {
 		return nil, fmt.Errorf("unknown migration %q; available: v3-to-v4, v2-to-v4", migration)
@@ -102,9 +133,18 @@ func loadRules(migration string) ([]CompiledRule, error) {
 	if err := yaml.Unmarshal(data, &rs); err != nil {
 		return nil, fmt.Errorf("failed to parse migration rules: %w", err)
 	}
+	return &rs, nil
+}
+
+func loadRules(migration string) ([]CompiledRule, error) {
+	rs, err := parseRuleSet(migration)
+	if err != nil {
+		return nil, err
+	}
 
 	sourceImportPrefix = rs.From
 	targetImportPrefix = rs.To
+	targetMinimumVersion = rs.MinimumTargetVersion
 
 	compiled := make([]CompiledRule, 0, len(rs.Rules))
 	for _, r := range rs.Rules {
