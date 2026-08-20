@@ -39,6 +39,13 @@ type Finding struct {
 	EndCol    int    `json:"end_col,omitempty"`
 	NodeKind  string `json:"node_kind,omitempty"`
 	MatchedBy string `json:"matched_by,omitempty"`
+
+	// Version-floor fields, set only on findings reporting that the
+	// project's go.mod is below what a fired rule needs. All three are
+	// omitted on every other finding, so existing consumers are unaffected.
+	RequiresModule  string `json:"requires_module,omitempty"`
+	RequiresVersion string `json:"requires_version,omitempty"`
+	CurrentVersion  string `json:"current_version,omitempty"`
 }
 
 // CheckResult holds the aggregate output of a migration check.
@@ -62,6 +69,10 @@ func Check(dir string, rules []CompiledRule, opts CheckOptions) (*CheckResult, e
 	findings := make([]Finding, 0, len(goFindings)+len(buildFindings))
 	findings = append(findings, goFindings...)
 	findings = append(findings, buildFindings...)
+
+	// Gate Go-conditional rules and add version-floor diagnostics before
+	// sorting, so the added findings land in file order with the rest.
+	findings = applyVersionFloors(dir, findings, rules)
 
 	sort.Slice(findings, func(i, j int) bool {
 		if findings[i].File != findings[j].File {
