@@ -45,16 +45,16 @@ type Requires struct {
 	// Go is a `go` directive value such as "1.27". A rule carrying one is
 	// suppressed entirely on projects below it, because its guidance cannot
 	// be acted on there.
-	Go string `yaml:"go,omitempty" json:"go,omitempty"`
+	Go string `json:"go,omitempty" yaml:"go,omitempty"`
 	// Modules are the module versions the rule's guidance needs in order to
 	// compile.
-	Modules []ModuleRequirement `yaml:"modules,omitempty" json:"modules,omitempty"`
+	Modules []ModuleRequirement `json:"modules,omitempty" yaml:"modules,omitempty"`
 }
 
 // ModuleRequirement is one module version floor.
 type ModuleRequirement struct {
-	Path    string `yaml:"path"    json:"path"`
-	Version string `yaml:"version" json:"version"`
+	Path    string `json:"path"    yaml:"path"`
+	Version string `json:"version" yaml:"version"`
 }
 
 // Rule is a single migration rule.
