@@ -1,6 +1,6 @@
 module github.com/jwx-go/jwxmigrate/v4
 
-go 1.26.0
+go 1.26.10
 
 require (
 	github.com/stretchr/testify v1.12.1
